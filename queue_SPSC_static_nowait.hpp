@@ -1,0 +1,67 @@
+#include <cstddef>
+#include <array>
+#include <atomic>
+#include <optional>
+
+#ifndef QUEUE_SPSC_STATIC_NOWAIT_HPP
+#define QUEUE_SPSC_STATIC_NOWAIT_HPP
+
+template <class T, std::size_t N>
+    requires std::is_nothrow_move_constructible_v<T> &&
+             std::is_nothrow_move_assignable_v<T> &&
+             std::is_default_constructible_v<T>
+class queue_SPSC_static_nowait {
+    static_assert(N > 0);
+    static_assert(std::atomic<std::size_t>::is_always_lock_free);
+    
+    std::array<T, N> _static_buffer{};
+    std::atomic<std::size_t> _size{ 0 };
+    std::size_t _index__pop{ 0 };
+    std::size_t _index__push{ 0 };
+
+    // strong exception safety
+    bool push_helper(auto&& t) {
+        if (_size.load(std::memory_order_acquire) == N) return false;
+
+        _static_buffer[_index__push] = std::forward<decltype(t)>(t); // can fail if T's copy/move ctor can throw
+        _index__push = (_index__push + 1) % N; // no throw
+        _size.fetch_add(1, std::memory_order_release); // no throw
+        return true; // no throw
+    }
+
+public:
+
+    // strong exception safety
+    bool push(T&& t) { return push_helper(std::move(t)); }
+    // strong exception safety
+    bool push(const T& t) { return push_helper(t); }
+    
+    // strong exception safety
+    template<typename... Ts>
+    bool emplace(Ts&&... args) {
+        if (_size.load(std::memory_order_acquire) == N) return false;
+
+        // can fail if T's ctor can throw
+        // would be optimized by the compiler
+        _static_buffer[_index__push] = T(std::forward<Ts>(args)...);
+        _index__push = (_index__push + 1) % N; // no throw
+        _size.fetch_add(1, std::memory_order_release); // no throw
+        return true; // no throw
+    }
+
+    // strong exception safety
+    auto pop() -> std::optional<T> {
+        std::optional<T> val{};
+        if (_size.load(std::memory_order_acquire) > 0) {
+            val = std::move(_static_buffer[_index__pop]); // relies on std::is_nothrow_move_assignable_v<T>
+            _index__pop = (_index__pop + 1) % N; // no throw
+            _size.fetch_sub(1, std::memory_order_release); // no throw
+        }
+        return val; // no throw by std::is_nothrow_move_constructible_v<T>
+    }
+
+    // not reliable but not needed to be -> memory_order_relaxed
+    auto size() const noexcept { return _size.load(std::memory_order_relaxed); }
+};
+
+#endif // QUEUE_SPSC_STATIC_NOWAIT_HPP
