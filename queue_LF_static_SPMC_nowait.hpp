@@ -3,14 +3,14 @@
 #include <atomic>
 #include <optional>
 
-#ifndef QUEUE_SPMC_STATIC_NOWAIT_HPP
-#define QUEUE_SPMC_STATIC_NOWAIT_HPP
+#ifndef QUEUE_LF_STATIC_SPMC_NOWAIT_HPP
+#define QUEUE_LF_STATIC_SPMC_NOWAIT_HPP
 
 template <class T, std::size_t N>
     requires std::is_nothrow_move_constructible_v<T> &&
              std::is_nothrow_move_assignable_v<T> &&
              std::is_default_constructible_v<T>
-class queue_SPMC_static_nowait {
+class queue_LF_static_SPMC_nowait {
     static_assert(N > 0);
     static_assert(std::atomic<std::size_t>::is_always_lock_free);
     
@@ -87,4 +87,4 @@ public:
     auto size() const noexcept { return _size.load(std::memory_order_relaxed); }
 };
 
-#endif // QUEUE_SPMC_STATIC_NOWAIT_HPP
+#endif // QUEUE_LF_STATIC_SPMC_NOWAIT_HPP
