@@ -1,5 +1,5 @@
-#ifndef QUEUE_LF_STATIC_SPSC_WAIT_HPP
-#define QUEUE_LF_STATIC_SPSC_WAIT_HPP
+#ifndef QUEUE_LF_LINKED_SPSC_WAIT_HPP
+#define QUEUE_LF_LINKED_SPSC_WAIT_HPP
 
 #include <cstddef>
 #include <array>
@@ -10,7 +10,7 @@ template <class T, std::size_t N>
     requires std::is_nothrow_move_constructible_v<T> &&
              std::is_nothrow_move_assignable_v<T> &&
              std::is_default_constructible_v<T>
-class queue_LF_static_SPSC_wait {
+class queue_LF_linked_SPSC_wait {
     static_assert(N > 0);
     static_assert(std::atomic<std::size_t>::is_always_lock_free);
     
@@ -67,4 +67,4 @@ public:
     auto size() const noexcept { return _size.load(std::memory_order_relaxed); }
 };
 
-#endif // QUEUE_LF_STATIC_SPSC_WAIT_HPP
+#endif // QUEUE_LF_LINKED_SPSC_WAIT_HPP

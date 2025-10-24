@@ -1,35 +1,56 @@
-#ifndef QUEUE_LF_STATIC_SPSC_NOWAIT_HPP
-#define QUEUE_LF_STATIC_SPSC_NOWAIT_HPP
+#ifndef QUEUE_LF_LINKED_SPSC_NOWAIT_HPP
+#define QUEUE_LF_LINKED_SPSC_NOWAIT_HPP
 
 #include <cstddef>
 #include <array>
 #include <atomic>
 #include <optional>
+#include "queue_LF_linked_node.hpp"
 
-template <class T, std::size_t N, template <typename> typename Memory_Pool>
+template <class T, std::size_t N>
     requires std::is_nothrow_move_constructible_v<T> &&
              std::is_nothrow_move_assignable_v<T> &&
              std::is_default_constructible_v<T>
-class queue_LF_static_SPSC_nowait {
-    static_assert(N > 0);
-    static_assert(std::atomic<std::size_t>::is_always_lock_free);
-    
-    Memory_Pool<T, N> _static_buffer{};
-    std::atomic<std::size_t> _size{ 0 };
-    std::size_t _index__pop{ 0 };
-    std::size_t _index__push{ 0 };
-
-    // strong exception safety
-    bool push_helper(auto&& t) {
-        if (_size.load(std::memory_order_acquire) == N) return false;
-
-        _static_buffer[_index__push] = std::forward<decltype(t)>(t); // can fail if T's copy/move ctor can throw
-        _index__push = (_index__push + 1) % N; // no throw
-        _size.fetch_add(1, std::memory_order_release); // no throw
-        return true; // no throw
-    }
+class queue_LF_linked_SPSC_nowait {
+    using _node_t = queue_LF_linked_node<T>;
+    std::atomic<_node_t*> _head;
 
 public:
+
+    void push(T const& _data){
+        auto new_node = std::make_shared<_Node_t>(_data);
+        auto new_node_ptr = new_node.get();
+        new_node_ptr->_next = _head.load();
+        while(
+            !_head.compare_exchange_weak(
+                new_node_ptr->_next,
+                new_node_ptr,
+                std::memory_order_release,
+                std::memory_order_relaxed));
+    }
+
+    std::shared_ptr<T> pop() {
+        /*
+            Read the current value of head.
+            Read head->next.
+            Set head to head->next.
+            Return the data from the retrieved node.
+            Delete the retrieved node.
+        */
+        _node_t* old_head = _head.load();
+        while(
+            old_head &&
+            !_head.compare_exchange_weak(
+                old_head,
+                old_head->_next,
+                std::memory_order_acquire,
+                std::memory_order_relaxed));
+        return old_head ? old_head->_data : std::shared_ptr<T>();
+    }
+
+
+
+
 
     // strong exception safety
     bool push(T&& t) { return push_helper(std::move(t)); }
@@ -64,4 +85,4 @@ public:
     auto size() const noexcept { return _size.load(std::memory_order_relaxed); }
 };
 
-#endif // QUEUE_LF_STATIC_SPSC_NOWAIT_HPP
+#endif // QUEUE_LF_LINKED_SPSC_NOWAIT_HPP
