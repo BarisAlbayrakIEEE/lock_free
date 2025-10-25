@@ -28,7 +28,7 @@ namespace lf {
 
     // ---------- Hazard Pointer Infrastructure ----------
     // Fixed-size pool; tune for your worst-case concurrent thread count.
-    inline constexpr std::size_t MAX_HAZARD_RECORD_COUNT = 128;
+    inline constexpr std::size_t HAZARD_RECORD_COUNT__DEFAULT = 128;
 
     // One hazard record
     struct Hazard_Record {
@@ -46,7 +46,7 @@ namespace lf {
     inline thread_local std::vector<Retired_Node> RETIRED_NODES;
 
     // Acquire/release one hazard record per thread via RAII.
-    template <std::size_t HAZARD_RECORD_COUNT = MAX_HAZARD_RECORD_COUNT>
+    template <std::size_t HAZARD_RECORD_COUNT = HAZARD_RECORD_COUNT__DEFAULT>
     class Hazard_Owner {
     public:
         inline constexpr std::size_t RECLAIM_TRESHOLD = 64;
@@ -75,7 +75,13 @@ namespace lf {
             std::vector<Retired_Node> retired_nodes__keep;
             retired_nodes__keep.reserve(RETIRED_NODES.size());
             for (auto& retired_node : RETIRED_NODES) {
-                if (std::find(hazard_ptrs.begin(), hazard_ptrs.end(), retired_node._ptr) == hazard_ptrs.end()) {
+                if (
+                    std::find(
+                        hazard_ptrs.begin(),
+                        hazard_ptrs.end(),
+                        retired_node._ptr) ==
+                    hazard_ptrs.end())
+                {
                     retired_node._deleter(retired_node._ptr);
                 } else {
                     retired_nodes__keep.push_back(retired_node);
@@ -164,7 +170,10 @@ namespace lf {
     template <
         typename T,
         template <typename> typename Memory_Pool = unary_void_t,
-        std::size_t HAZARD_RECORD_COUNT = MAX_HAZARD_RECORD_COUNT>
+        std::size_t HAZARD_RECORD_COUNT = HAZARD_RECORD_COUNT__DEFAULT>
+        requires ( // as pop returns std::optional<T>
+            std::is_nothrow_move_constructible_v<T> &&
+            std::is_nothrow_move_assignable_v<T>)
     class lock_free_stack {
     private:
         static constexpr bool _IS_MEMORY_POOL_VOID = is_same_template_v<Memory_Pool, unary_void_t>;
@@ -268,40 +277,40 @@ namespace lf {
         std::optional<T> pop() {
             Hazard_Owner<HAZARD_RECORD_COUNT> hazard_owner; // Acquire per-thread hazard record (RAII)
             while (true) {
-                Node* old = _head.load(std::memory_order_acquire);
-                if (!old) {
-                    // Nothing to pop
-                    return std::nullopt;
+                Node* old_head = _head.load(std::memory_order_acquire);
+                if (!old_head) return std::nullopt;
+
+                // protext the old head by a hazard pointer
+                hazard_owner.protect(old_head);
+
+                // check if the head is updated by another thread
+                if (_head.load(std::memory_order_acquire) != old_head) {
+                    hazard_owner.clear();
+                    continue;
                 }
 
-                // Publish hazard = old (release), then recheck head to avoid races.
-                hazard_owner.protect(old);
-
-                // Make sure 'old' is still the head we saw (avoid torn protection).
-                if (_head.load(std::memory_order_acquire) != old) {
-                    continue; // Head changed; retry with new head and update hazard accordingly
-                }
-
-                Node* next = old->_next;
+                // set the new head
                 if (_head.compare_exchange_weak(
-                        old,
-                        next,
-                        std::memory_order_acquire,   // acquire pairs with push's release (reads old->_data safely)
+                        old_head,
+                        old_head->_next,
+                        std::memory_order_acquire,
                         std::memory_order_relaxed)) {
-                    // We own 'old' now. Clear hazard before reclaiming so others can free it if safe.
+                    // clear the hazard pointer
                     hazard_owner.clear();
 
-                    // Move out the payload under our exclusive ownership.
-                    std::optional<T> out{std::move(old->_data)};
+                    // guaranteed to be safe as:
+                    //   std::is_nothrow_move_constructible_v<T> &&
+                    //   std::is_nothrow_move_assignable_v<T>
+                    std::optional<T> data{ std::move(old_head->_data) };
 
-                    // Retire node; deleted when no hazard pointers point to it.
+                    // destroy the old head when all hazard pointers are cleared
                     Hazard_Owner<HAZARD_RECORD_COUNT>::retire_later(
-                        static_cast<void*>(old),
+                        static_cast<void*>(old_head),
                         &delete_node);
 
                     // Opportunistic local reclaim if a batch built up.
                     Hazard_Owner<HAZARD_RECORD_COUNT>::try_reclaim();
-                    return out;
+                    return data;
                 }
                 // CAS failed: someone else popped it, retry with new head; loop will update hazard.
             }
