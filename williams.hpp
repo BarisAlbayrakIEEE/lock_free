@@ -36,14 +36,14 @@ public:
     void push(T const& data) {
         std::shared_ptr<Node> const new_node = std::make_shared<Node>(data);
         new_node->_next = std::atomic_load(&_head);
-        while(!head.compare_exchange_weak(new_node->_next, new_node));
+        while(!_head.compare_exchange_weak(new_node->_next, new_node));
     }
     std::shared_ptr<T> pop() {
         std::shared_ptr<Node> old_head = std::atomic_load(&_head);
         while(
             old_head &&
             !_head.compare_exchange_weak(old_head, old_head->_next.load()));
-        if(old_head) {
+        if (old_head) {
             std::atomic_store(&old_head->_next, std::shared_ptr<Node>());
             return old_head->_data;
         }
@@ -83,10 +83,10 @@ private:
         }
     }
     void try_reclaim(Node* old_head) {
-        if(threads_in_pop ==  1) {
+        if (threads_in_pop ==  1) {
             Node* nodes_to_delete = to_be_deleted.exchange(nullptr);
-            if(!--threads_in_pop) delete_nodes(nodes_to_delete);
-            else if(nodes_to_delete) chain_pending_nodes(nodes_to_delete);
+            if (!--threads_in_pop) delete_nodes(nodes_to_delete);
+            else if (nodes_to_delete) chain_pending_nodes(nodes_to_delete);
             delete old_head;
         } else {
             chain_pending_node(old_head);
@@ -123,10 +123,10 @@ public:
         while(
             old_head &&
             !_head.compare_exchange_weak(old_head, old_head->_next));
-        std::shared_ptr<T> res;
-        if(old_head) res.swap(old_head->_data);
+        std::shared_ptr<T> data;
+        if (old_head) data.swap(old_head->_data);
         try_reclaim(old_head);
-        return res;
+        return data;
     }
 };
 
@@ -160,7 +160,7 @@ public:
 
 
 struct Hazard_Ptr {
-    std::atomic<std::thread::id> _thread_id;
+    std::atomic<std::thread::id> _tid;
     std::atomic<void*> _ptr;
 };
 
@@ -173,36 +173,37 @@ public:
     Hazard_Owner(Hazard_Owner const&) = delete;
     Hazard_Owner operator = (Hazard_Owner const&) = delete;
     Hazard_Owner() : _hazard_ptr(nullptr) {
+        auto this_tid{ std::this_thread::get_id() };
         for(unsigned i = 0; i < MAX_HAZARD_PTRS; ++i) {
-            std::thread::id old_id;
-            if(
-                HAZARD_PTRS[i]._thread_id.compare_exchange_strong(
-                    old_id, 
-                    std::this_thread::get_id()))
+            std::thread::id old_tid;
+            if (
+                HAZARD_PTRS[i]._tid.compare_exchange_strong(
+                    old_tid, 
+                    this_tid))
             {
                 _hazard_ptr = &HAZARD_PTRS[i];
                 break;
             }
         }
-        if(!_hazard_ptr) {
+        if (!_hazard_ptr) {
             throw std::runtime_error("No hazard pointers available");
         }
     }
-    std::atomic<void*>& get_ptr() { return _hazard_ptr->_ptr; }
+    std::atomic<void*>& get_hazard_ptr() { return _hazard_ptr->_ptr; }
     ~Hazard_Owner() {
         _hazard_ptr->_ptr.store(nullptr);
-        _hazard_ptr->_thread_id.store(std::thread::id());
+        _hazard_ptr->_tid.store(std::thread::id());
     }
 };
 
-std::atomic<void*>& get_ptr_for_current_thread() {
+std::atomic<void*>& get_hazard_ptr_for_current_thread() {
     thread_local static Hazard_Owner hazard_owner;
-    return hazard_owner.get_ptr();
+    return hazard_owner.get_hazard_ptr();
 }
 
 bool is_hazard_ptr_assigned_to(void* ptr) {
     for(unsigned i = 0; i < MAX_HAZARD_PTRS; ++i) {
-        if(HAZARD_PTRS[i]._ptr.load() ==    ptr) return true;
+        if (HAZARD_PTRS[i]._ptr.load() == ptr) return true;
     }
     return false;
 }
@@ -242,7 +243,7 @@ void delete_reclaimables_with_no_hazard_ptrs() {
     Reclaimable* current = RECLAIMABLES.exchange(nullptr);
     while(current) {
         Reclaimable* const next = current->_next;
-        if(!is_hazard_ptr_assigned_to(current->_data)) delete current;
+        if (!is_hazard_ptr_assigned_to(current->_data)) delete current;
         else add_to_reclaimables(current);
         current = next;
     }
@@ -272,27 +273,27 @@ public:
     }
     
     std::shared_ptr<T> pop() {
-        std::atomic<void*>& ptr = get_ptr_for_current_thread();
-        Node* old_head = head.load();
+        std::atomic<void*>& hazard_ptr = get_hazard_ptr_for_current_thread();
+        Node* old_head = _head.load();
         do {
             Node* temp;
             do {
                 temp = old_head;
-                ptr.store(old_head);
-                old_head = head.load();
+                hazard_ptr.store(old_head);
+                old_head = _head.load();
             } while(old_head != temp);
         } while(
             old_head &&
-            !head.compare_exchange_strong(old_head, old_head->_next));
+            !_head.compare_exchange_strong(old_head, old_head->_next));
         
-        ptr.store(nullptr);
-        std::shared_ptr<T> res;
-        if(old_head) {
-            res.swap(old_head->_data);
-            if(is_hazard_ptr_assigned_to(old_head)) reclaim_later(old_head);
+        hazard_ptr.store(nullptr);
+        std::shared_ptr<T> data;
+        if (old_head) {
+            data.swap(old_head->_data);
+            if (is_hazard_ptr_assigned_to(old_head)) reclaim_later(old_head);
             else delete old_head;
             delete_reclaimables_with_no_hazard_ptrs();
         }
-        return res;
+        return data;
     }
 };
