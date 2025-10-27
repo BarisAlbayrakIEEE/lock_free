@@ -2,7 +2,6 @@
 #define QUEUE_LF_LINKED_SPMC_NOWAIT_HPP
 
 #include <cstddef>
-#include <array>
 #include <atomic>
 #include <optional>
 
@@ -20,10 +19,10 @@ class queue_LF_linked_SPMC_nowait {
     std::size_t _index__push{ 0 };
 
     // strong exception safety
-    bool push_helper(auto&& t) {
+    bool push_helper(auto&& data) {
         if (_size.load(std::memory_order_acquire) == N) return false;
 
-        _static_buffer[_index__push] = std::forward<decltype(t)>(t); // can fail if T's copy/move ctor can throw
+        _static_buffer[_index__push] = std::forward<decltype(data)>(data); // can fail if T's copy/move ctor can throw
         _index__push = (_index__push + 1) % N; // no throw
         _size.fetch_add(1, std::memory_order_release); // no throw
         return true;
@@ -32,9 +31,9 @@ class queue_LF_linked_SPMC_nowait {
 public:
 
     // strong exception safety
-    bool push(T&& t) { return push_helper(std::move(t)); }
+    bool push(T&& data) { return push_helper(std::move(data)); }
     // strong exception safety
-    bool push(const T& t) { return push_helper(t); }
+    bool push(const T& data) { return push_helper(data); }
     
     // strong exception safety
     template<typename... Ts>
@@ -51,7 +50,7 @@ public:
 
     // strong exception safety
     auto pop() -> std::optional<T> {
-        std::optional<T> val{};
+        std::optional<T> data{};
 
         // single producer
         //   -> call wait before CAS for performance
@@ -74,13 +73,13 @@ public:
                 //   in order to use fetch_add instead of a CAS loop
                 //   for performance.
                 std::size_t index = _index__pop.fetch_add(1, std::memory_order_relaxed) % N;
-                val = std::move(_static_buffer[index]);
+                data = std::move(_static_buffer[index]);
             }
         }
 
         // NRVO or move optimized
         // no throw by std::is_nothrow_move_constructible_v<T>
-        return val;
+        return data;
     }
 
     // not reliable but not needed to be -> memory_order_relaxed

@@ -2,7 +2,6 @@
 #define QUEUE_LF_LINKED_SPSC_WAIT_HPP
 
 #include <cstddef>
-#include <array>
 #include <atomic>
 #include <optional>
 
@@ -20,10 +19,10 @@ class queue_LF_linked_SPSC_wait {
     std::size_t _index__push{ 0 };
 
     // strong exception safety
-    void push_helper(auto&& t) {
+    void push_helper(auto&& data) {
         _size.wait(N, std::memory_order_acquire);
 
-        _static_buffer[_index__push] = std::forward<decltype(t)>(t); // can fail if T's copy/move ctor can throw
+        _static_buffer[_index__push] = std::forward<decltype(data)>(data); // can fail if T's copy/move ctor can throw
         _index__push = (_index__push + 1) % N; // no throw
         _size.fetch_add(1, std::memory_order_release); // no throw
         _size.notify_one(); // no throw
@@ -32,9 +31,9 @@ class queue_LF_linked_SPSC_wait {
 public:
 
     // strong exception safety
-    void push(T&& t) { push_helper(std::move(t)); }
+    void push(T&& data) { push_helper(std::move(data)); }
     // strong exception safety
-    void push(const T& t) { push_helper(t); }
+    void push(const T& data) { push_helper(data); }
     
     // strong exception safety
     template<typename... Ts>
@@ -53,14 +52,14 @@ public:
     auto pop() -> T {
         _size.wait(0, std::memory_order_acquire);
 
-        auto val = std::move(_static_buffer[_index__pop]); // relies on std::is_nothrow_move_assignable_v<T>
+        auto data = std::move(_static_buffer[_index__pop]); // relies on std::is_nothrow_move_assignable_v<T>
         _index__pop = (_index__pop + 1) % N; // no throw
         _size.fetch_sub(1, std::memory_order_release); // no throw
         _size.notify_one(); // no throw
 
         // NRVO or move optimized
         // no throw by std::is_nothrow_move_constructible_v<T>
-        return val;
+        return data;
     }
 
     // not reliable but not needed to be -> memory_order_relaxed

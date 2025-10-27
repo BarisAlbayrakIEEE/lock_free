@@ -6,7 +6,7 @@
 #include <atomic>
 #include <optional>
 
-template <class T, std::size_t N, template <typename> typename Memory_Pool>
+template <class T, std::size_t N, template <typename> typename Allocator>
     requires std::is_nothrow_move_constructible_v<T> &&
              std::is_nothrow_move_assignable_v<T> &&
              std::is_default_constructible_v<T>
@@ -14,7 +14,7 @@ class queue_LF_static_SPSC_nowait {
     static_assert(N > 0);
     static_assert(std::atomic<std::size_t>::is_always_lock_free);
     
-    Memory_Pool<T, N> _static_buffer{};
+    Allocator<T, N> _static_buffer{};
     std::atomic<std::size_t> _size{ 0 };
     std::size_t _index__pop{ 0 };
     std::size_t _index__push{ 0 };

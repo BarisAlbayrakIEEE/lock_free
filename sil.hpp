@@ -10,7 +10,7 @@
 #include <cstddef>
 #include <utility>
 
-namespace lf {
+namespace LF {
 
 // ---------- Hazard Pointer Infrastructure ----------
 // Fixed-size pool; tune for your worst-case concurrent thread count.
@@ -244,7 +244,7 @@ public:
     }
 };
 
-} // namespace lf
+} // namespace LF
 
 
 
