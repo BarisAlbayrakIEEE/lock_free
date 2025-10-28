@@ -73,44 +73,22 @@ namespace BA_Concurrency {
         Slot _slots[capacity];
 
         template <class U>
-        bool push_nonblocking(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
+        void push_blocking(U&& data) noexcept {
             // reserve a unique ticket
             const std::uint64_t ticket = _top.fetch_add(1, std::memory_order_acq_rel);
             const std::size_t idx = static_cast<std::size_t>(ticket & _MASK);
             Slot& slot = _slots[idx];
 
-            // try if the slot is currently empty (slot._ticket_index == ticket) for this ticket.
-            if (slot._ticket_index.load(std::memory_order_acquire) != ticket) {
-                // Reservation succeeded (++_top)
-                // but the push is failed as the ring is full for this ticket.
-                // Undoing the top incrementation is not possible without coordination
-                // but the ticket is reserved and will be consumable once the slot cycles.
-                return false;
-            }
+            // Spin until this slot is empty for this ticket (buffer index == ticket)
+            while (slot._ticket_index.load(std::memory_order_acquire) != ticket) {}
 
             // construct and publish
             ::new (slot.to_ptr()) T(std::forward<U>(data));
             slot._ticket_index.store(ticket + 1, std::memory_order_release);
-            return true;
         }
 
         template <class U>
-        void push_blocking(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
-            // reserve a unique ticket
-            const std::uint64_t ticket = _top.fetch_add(1, std::memory_order_acq_rel);
-            const std::size_t idx = static_cast<std::size_t>(ticket & _MASK);
-            Slot& slot = _slots[idx];
-
-            // Spin until this slot is empty for this ticket (buffer index == ticket)
-            while (slot._ticket_index.load(std::memory_order_acquire) != ticket) {}
-
-            // construct and publish
-            ::new (slot.to_ptr()) T(std::forward<U>(data));
-            slot._ticket_index.store(ticket + 1, std::memory_order_release);
-        }
-
-        template <typename... Args>
-        bool emplace_nonblocking(Args&&... args) {
+        bool push_nonblocking(U&& data) noexcept {
             // reserve a unique ticket
             const std::uint64_t ticket = _top.fetch_add(1, std::memory_order_acq_rel);
             const std::size_t idx = static_cast<std::size_t>(ticket & _MASK);
@@ -126,24 +104,9 @@ namespace BA_Concurrency {
             }
 
             // construct and publish
-            ::new (slot.to_ptr()) T(std::forward<Args>(args)...);
+            ::new (slot.to_ptr()) T(std::forward<U>(data));
             slot._ticket_index.store(ticket + 1, std::memory_order_release);
             return true;
-        }
-
-        template <typename... Args>
-        void emplace_blocking(Args&&... args) {
-            // reserve a unique ticket
-            const std::uint64_t ticket = _top.fetch_add(1, std::memory_order_acq_rel);
-            const std::size_t idx = static_cast<std::size_t>(ticket & _MASK);
-            Slot& slot = _slots[idx];
-
-            // Spin until this slot is empty for this ticket (buffer index == ticket)
-            while (slot._ticket_index.load(std::memory_order_acquire) != ticket) {}
-
-            // construct and publish
-            ::new (slot.to_ptr()) T(std::forward<Args>(args)...);
-            slot._ticket_index.store(ticket + 1, std::memory_order_release);
         }
 
     public:
@@ -176,19 +139,7 @@ namespace BA_Concurrency {
         Stack(const Stack&) = delete;
         Stack& operator=(const Stack&) = delete;
 
-        // non-blocking (no wait) push and emplace functions
-        bool try_push(const T& data) noexcept(std::is_nothrow_copy_constructible_v<T>) {
-            return push_nonblocking(data);
-        }
-        bool try_push(T&& data) noexcept(std::is_nothrow_move_constructible_v<T>) {
-            return push_nonblocking(std::move(data));
-        }
-        template <typename... Args>
-        bool try_emplace(Args&&... args) {
-            return emplace_nonblocking(std::forward<Args>(args)...);
-        }
-
-        // blocking (busy) push and emplace functions
+        // blocking (busy) push, emplace and pop functions
         void push(const T& data) noexcept(std::is_nothrow_copy_constructible_v<T>) {
             push_blocking(data);
         }
@@ -197,7 +148,17 @@ namespace BA_Concurrency {
         }
         template <typename... Args>
         void emplace(Args&&... args) {
-            emplace_blocking(std::forward<Args>(args)...);
+            // reserve a unique ticket
+            const std::uint64_t ticket = _top.fetch_add(1, std::memory_order_acq_rel);
+            const std::size_t idx = static_cast<std::size_t>(ticket & _MASK);
+            Slot& slot = _slots[idx];
+
+            // Spin until this slot is empty for this ticket (buffer index == ticket)
+            while (slot._ticket_index.load(std::memory_order_acquire) != ticket) {}
+
+            // construct and publish
+            ::new (slot.to_ptr()) T(std::forward<Args>(args)...);
+            slot._ticket_index.store(ticket + 1, std::memory_order_release);
         }
 
         // Pop the most recently pushed element (LIFO) after the producer finishes the publish.
@@ -237,6 +198,35 @@ namespace BA_Concurrency {
                 }
                 // CAS failed: retry CAS with the updated expected value
             }
+        }
+
+        // non-blocking (no wait) push and emplace functions
+        bool try_push(const T& data) noexcept(std::is_nothrow_copy_constructible_v<T>) {
+            return push_nonblocking(data);
+        }
+        bool try_push(T&& data) noexcept(std::is_nothrow_move_constructible_v<T>) {
+            return push_nonblocking(std::move(data));
+        }
+        template <typename... Args>
+        bool try_emplace(Args&&... args) {
+            // reserve a unique ticket
+            const std::uint64_t ticket = _top.fetch_add(1, std::memory_order_acq_rel);
+            const std::size_t idx = static_cast<std::size_t>(ticket & _MASK);
+            Slot& slot = _slots[idx];
+
+            // try if the slot is currently empty (slot._ticket_index == ticket) for this ticket.
+            if (slot._ticket_index.load(std::memory_order_acquire) != ticket) {
+                // Reservation succeeded (++_top)
+                // but the push is failed as the ring is full for this ticket.
+                // Undoing the top incrementation is not possible without coordination
+                // but the ticket is reserved and will be consumable once the slot cycles.
+                return false;
+            }
+
+            // construct and publish
+            ::new (slot.to_ptr()) T(std::forward<Args>(args)...);
+            slot._ticket_index.store(ticket + 1, std::memory_order_release);
+            return true;
         }
     };
 

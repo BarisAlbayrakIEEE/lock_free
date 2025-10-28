@@ -106,8 +106,8 @@ namespace BA_Concurrency {
                 !_head.compare_exchange_strong( // set head to next taking the spurious failures into account
                     old_head,
                     old_head->_next,
-                    std::memory_order_acquire,
-                    std::memory_order_relaxed));
+                    std::memory_order_acq_rel,
+                    std::memory_order_acquire));
             
             // clear the hazard ptr
             hazard_ptr_owner.clear();
