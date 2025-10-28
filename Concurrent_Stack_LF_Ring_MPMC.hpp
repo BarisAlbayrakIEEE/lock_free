@@ -96,7 +96,7 @@ namespace BA_Concurrency {
             Slot *slot = &_slots[top];
 
             // Step 1
-            std::uint64_t expected_state = Slot_States::SCD;
+            std::uint8_t expected_state = Slot_States::SCD;
             while (
                 !slot->_state.compare_exchange_strong(
                     expected_state,
@@ -105,7 +105,7 @@ namespace BA_Concurrency {
                     std::memory_order_relaxed))
             {
                 expected_state = Slot_States::SCD;
-                top = (_top.fetch_add(1, std::memory_order_acq_rel) + 1) & _MASK;
+                top = _top.fetch_add(1, std::memory_order_acq_rel) & _MASK;
                 slot = &_slots[top];
             };
 
@@ -132,8 +132,8 @@ namespace BA_Concurrency {
             Slot *slot = &_slots[top];
 
             // Step 1
-            std::uint64_t expected_state_1 = Slot_States::SCD;
-            std::uint64_t expected_state_2 = Slot_States::SCP;
+            std::uint8_t expected_state_1 = Slot_States::SCD;
+            std::uint8_t expected_state_2 = Slot_States::SCP;
             while (true) {
                 while (
                     !slot->_state.compare_exchange_strong(
@@ -149,7 +149,7 @@ namespace BA_Concurrency {
                 {
                     expected_state_1 = Slot_States::SCD;
                     expected_state_2 = Slot_States::SCP;
-                    top = (_top.fetch_add(1, std::memory_order_acq_rel) + 1) & _MASK;
+                    top = _top.fetch_add(1, std::memory_order_acq_rel) & _MASK;
                     slot = &_slots[top];
                 };
 
@@ -184,7 +184,7 @@ namespace BA_Concurrency {
             Slot& slot = _slots[top];
 
             // Step 1
-            std::uint64_t expected_state = Slot_States::SCD;
+            std::uint8_t expected_state = Slot_States::SCD;
             if (
                 !slot._state.compare_exchange_strong(
                     expected_state,
@@ -228,7 +228,7 @@ namespace BA_Concurrency {
             Slot *slot = &_slots[top];
 
             // Step 1
-            std::uint64_t expected_state = Slot_States::SCD;
+            std::uint8_t expected_state = Slot_States::SCD;
             while (
                 !slot->_state.compare_exchange_strong(
                     expected_state,
@@ -237,7 +237,7 @@ namespace BA_Concurrency {
                     std::memory_order_relaxed))
             {
                 expected_state = Slot_States::SCD;
-                top = (_top.fetch_add(1, std::memory_order_acq_rel) + 1) & _MASK;
+                top = _top.fetch_add(1, std::memory_order_acq_rel) & _MASK;
                 slot = &_slots[top];
             };
 
@@ -261,7 +261,7 @@ namespace BA_Concurrency {
             Slot *slot = &_slots[top];
 
             // Step 1
-            std::uint64_t expected_state = Slot_States::SPD;
+            std::uint8_t expected_state = Slot_States::SPD;
             while (
                 !slot->_state.compare_exchange_strong(
                     expected_state,
@@ -270,7 +270,11 @@ namespace BA_Concurrency {
                     std::memory_order_relaxed))
             {
                 expected_state = Slot_States::SPD;
-                top = (_top.fetch_sub(1, std::memory_order_acq_rel) - 1) & _MASK;
+                top = _top.compare_exchange_strong(
+                    top,
+                    top - 1,
+                    std::memory_order_acq_rel,
+                    std::memory_order_relaxed) & _MASK;
                 slot = &_slots[top];
             };
 
@@ -305,8 +309,8 @@ namespace BA_Concurrency {
             Slot *slot = &_slots[top];
 
             // Step 1
-            std::uint64_t expected_state_1 = Slot_States::SCD;
-            std::uint64_t expected_state_2 = Slot_States::SCP;
+            std::uint8_t expected_state_1 = Slot_States::SCD;
+            std::uint8_t expected_state_2 = Slot_States::SCP;
             while (true) {
                 while (
                     !slot->_state.compare_exchange_strong(
@@ -322,7 +326,7 @@ namespace BA_Concurrency {
                 {
                     expected_state_1 = Slot_States::SCD;
                     expected_state_2 = Slot_States::SCP;
-                    top = (_top.fetch_add(1, std::memory_order_acq_rel) + 1) & _MASK;
+                    top = _top.fetch_add(1, std::memory_order_acq_rel) & _MASK;
                     slot = &_slots[top];
                 };
 
@@ -356,8 +360,8 @@ namespace BA_Concurrency {
             Slot *slot = &_slots[top];
 
             // Step 1
-            std::uint64_t expected_state_1 = Slot_States::SPD;
-            std::uint64_t expected_state_2 = Slot_States::SPP;
+            std::uint8_t expected_state_1 = Slot_States::SPD;
+            std::uint8_t expected_state_2 = Slot_States::SPP;
             while (true) {
                 while (
                     !slot->_state.compare_exchange_strong(
@@ -373,7 +377,11 @@ namespace BA_Concurrency {
                 {
                     expected_state_1 = Slot_States::SPD;
                     expected_state_2 = Slot_States::SPP;
-                    top = (_top.fetch_sub(1, std::memory_order_acq_rel) - 1) & _MASK;
+                    top = _top.compare_exchange_strong(
+                        top,
+                        top - 1,
+                        std::memory_order_acq_rel,
+                        std::memory_order_relaxed) & _MASK;
                     slot = &_slots[top];
                 };
 
@@ -412,7 +420,7 @@ namespace BA_Concurrency {
             Slot& slot = _slots[top];
 
             // Step 1
-            std::uint64_t expected_state = Slot_States::SCD;
+            std::uint8_t expected_state = Slot_States::SCD;
             if (
                 !slot._state.compare_exchange_strong(
                     expected_state,
@@ -441,7 +449,7 @@ namespace BA_Concurrency {
             Slot& slot = _slots[top];
 
             // Step 1
-            std::uint64_t expected_state = Slot_States::SPD;
+            std::uint8_t expected_state = Slot_States::SPD;
             if (
                 !slot._state.compare_exchange_strong(
                     expected_state,
