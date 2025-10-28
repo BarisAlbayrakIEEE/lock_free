@@ -87,9 +87,8 @@ namespace BA_Concurrency {
         // Operation steps:
         //   Step 1: loop the slots while the following CAS fails:
         //             expected == SCD_, desired = SPP_
-        //   Step 2: store SPP_ into the state
-        //   Step 3: store the input data into the slot
-        //   Step 4: store SPD_ into the state
+        //   Step 2: store the input data into the slot
+        //   Step 3: store SPD_ into the state
         template <class U = T>
         void busy_push_helper(U&& data) noexcept {
             std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
@@ -112,12 +111,9 @@ namespace BA_Concurrency {
             };
 
             // Step 2
-            slot->_state.store(SPP_, std::memory_order_release);
-
-            // Step 3
             slot->_data = std::forward<U>(data);
 
-            // Step 4
+            // Step 3
             slot->_state.store(SPD_, std::memory_order_release);
         }
 
@@ -166,7 +162,8 @@ namespace BA_Concurrency {
             }
 
             // Step 3
-            slot->_state.store(SPP_, std::memory_order_release);
+            if (slot->_state.load(std::memory_order_acquire) == SCD_)
+                slot->_state.store(SPP_, std::memory_order_release);
 
             // Step 4
             slot->_data = std::forward<U>(data);
@@ -218,9 +215,8 @@ namespace BA_Concurrency {
         // Operation steps:
         //   Step 1: loop the slots while the following CAS fails:
         //             expected == SCD_, desired = SPP_
-        //   Step 2: store SPP_ into the state
-        //   Step 3: store the input data into the slot
-        //   Step 4: store SPD_ into the state
+        //   Step 2: store the input data into the slot
+        //   Step 3: store SPD_ into the state
         inline void busy_push(const T& data) noexcept(std::is_nothrow_copy_constructible_v<T>) {
             busy_push_helper(data);
         }
@@ -251,12 +247,9 @@ namespace BA_Concurrency {
             };
 
             // Step 2
-            slot->_state.store(SPP_, std::memory_order_release);
-
-            // Step 3
             slot->_data = T(std::forward<Args>(args)...);
 
-            // Step 4
+            // Step 3
             slot->_state.store(SPD_, std::memory_order_release);
         }
 
@@ -349,7 +342,8 @@ namespace BA_Concurrency {
             }
 
             // Step 3
-            slot->_state.store(SPP_, std::memory_order_release);
+            if (slot->_state.load(std::memory_order_acquire) == SCD_)
+                slot->_state.store(SPP_, std::memory_order_release);
 
             // Step 4
             slot->_data = T(std::forward<Args>(args)...);
