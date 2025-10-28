@@ -39,15 +39,17 @@
 #include <optional>
 #include "Concurrent_Stack.hpp"
 
-// Slot states
-#define SPP_ 0 // State-Producer-Progress
-#define SPW_ 1 // State-Producer-Waiting
-#define SPD_ 2 // State-Producer-Done
-#define SCP_ 3 // State-Consumer-Progress
-#define SCW_ 4 // State-Consumer-Waiting
-#define SCD_ 5 // State-Consumer-Done
-
 namespace BA_Concurrency {
+    // Slot states
+    enum class Slot_States : uint8_t {
+        SPP, // State-Producer-Progress
+        SPW, // State-Producer-Waiting
+        SPD, // State-Producer-Done
+        SCP, // State-Consumer-Progress
+        SCW, // State-Consumer-Waiting
+        SCD  // State-Consumer-Done
+    };
+
     template <unsigned char power>
     struct pow2_size_t {
         static constexpr std::size_t value = std::size_t(1) << power;
@@ -67,9 +69,8 @@ namespace BA_Concurrency {
         std::integral_constant<unsigned char, Capacity_As_Pow2>>
     {
         struct alignas(64) Slot {
-            std::atomic<std::uint64_t> _state;
+            std::atomic<std::uint8_t> _state{ Slot_States::SCD };
             alignas(64) T _data;
-            Slot() noexcept : _state(state_consumer_done) {}; // ready for push
         };
 
         // mask to modulo the ticket by capacity
@@ -81,32 +82,30 @@ namespace BA_Concurrency {
         // the buffer of slots
         Slot _slots[capacity];
 
-        // DOES NOT WAIT for the slots with SCP_ state
+        // DOES NOT WAIT for the slots with SCP state
         // APPLY this operation IF the consumer PERFORMS A TIME CONSUMING process!
         //
         // Operation steps:
         //   Step 1: loop the slots while the following CAS fails:
-        //             expected == SCD_, desired = SPP_
+        //             expected == SCD, desired = SPP
         //   Step 2: store the input data into the slot
-        //   Step 3: store SPD_ into the state
+        //   Step 3: store SPD into the state
         template <class U = T>
         void busy_push_helper(U&& data) noexcept {
             std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
             Slot *slot = &_slots[top];
 
             // Step 1
-            std::uint64_t expected_state = SCD_;
+            std::uint64_t expected_state = Slot_States::SCD;
             while (
                 !slot->_state.compare_exchange_strong(
                     expected_state,
-                    SPP_,
+                    Slot_States::SPP,
                     std::memory_order_acq_rel,
                     std::memory_order_relaxed))
             {
-                expected_state = SCD_;
-                ++top;
-                top &=  _MASK;
-                _top.store(top, std::memory_order_release);
+                expected_state = Slot_States::SCD;
+                top = (_top.fetch_add(1, std::memory_order_acq_rel) + 1) & _MASK;
                 slot = &_slots[top];
             };
 
@@ -114,72 +113,70 @@ namespace BA_Concurrency {
             slot->_data = std::forward<U>(data);
 
             // Step 3
-            slot->_state.store(SPD_, std::memory_order_release);
+            slot->_state.store(Slot_States::SPD, std::memory_order_release);
         }
 
-        // WAITS for the slots with SCP_ state
+        // WAITS for the slots with SCP state
         // APPLY this operation IF the consumer DOESN'T PERFORM A TIME CONSUMING process!
         //
         // Operation steps:
         //   Step 1: loop the slots while the following two CASs fail:
-        //             (expected == SCD_, desired = SPP_) and (expected == SCP_, desired = SPW_)
-        //   Step 2: IF Step 1 results with SPW_, wait till SCD_
-        //   Step 3: store SPP_ into the state
+        //             (expected == SCD, desired = SPP) and (expected == SCP, desired = SPW)
+        //   Step 2: IF Step 1 results with SPW, wait till SCD
+        //   Step 3: store SPP into the state
         //   Step 4: store the input data into the slot
-        //   Step 5: store SPD_ into the state
+        //   Step 5: store SPD into the state
         template <class U = T>
         void wait_push_helper(U&& data) noexcept {
             std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
             Slot *slot = &_slots[top];
 
             // Step 1
-            std::uint64_t expected_state_1 = SCD_;
-            std::uint64_t expected_state_2 = SCP_;
+            std::uint64_t expected_state_1 = Slot_States::SCD;
+            std::uint64_t expected_state_2 = Slot_States::SCP;
             while (true) {
                 while (
                     !slot->_state.compare_exchange_strong(
                         expected_state_1,
-                        SPP_,
+                        Slot_States::SPP,
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed) &&
                     !slot->_state.compare_exchange_strong(
                         expected_state_2,
-                        SPW_,
+                        Slot_States::SPW,
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed))
                 {
-                    expected_state_1 = SCD_;
-                    expected_state_2 = SCP_;
-                    ++top;
-                    top &=  _MASK;
-                    _top.store(top, std::memory_order_release);
+                    expected_state_1 = Slot_States::SCD;
+                    expected_state_2 = Slot_States::SCP;
+                    top = (_top.fetch_add(1, std::memory_order_acq_rel) + 1) & _MASK;
                     slot = &_slots[top];
                 };
 
                 // Step 2
-                while (slot->_state.load(std::memory_order_acquire) == SPW_);
+                while (slot->_state.load(std::memory_order_acquire) == Slot_States::SPW);
                 break;
             }
 
             // Step 3
-            if (slot->_state.load(std::memory_order_acquire) == SCD_)
-                slot->_state.store(SPP_, std::memory_order_release);
+            if (slot->_state.load(std::memory_order_acquire) == Slot_States::SCD)
+                slot->_state.store(Slot_States::SPP, std::memory_order_release);
 
             // Step 4
             slot->_data = std::forward<U>(data);
 
             // Step 5
-            slot->_state.store(SPD_, std::memory_order_release);
+            slot->_state.store(Slot_States::SPD, std::memory_order_release);
         }
 
-        // DOES NOT WAIT for the slots with SCP_ state
+        // DOES NOT WAIT for the slots with SCP state
         // APPLY this operation IF the consumer PERFORMS A TIME CONSUMING process!
         //
         // Operation steps:
         //   Step 1: return if the following CAS fails:
-        //             expected == SCD_, desired = SPP_
+        //             expected == SCD, desired = SPP
         //   Step 2: store the input data into the slot
-        //   Step 3: store SPD_ into the state
+        //   Step 3: store SPD into the state
         template <class U = T>
         bool try_push_helper(U&& data) noexcept {
             // Try to claim a slot with consumer/done state
@@ -187,19 +184,19 @@ namespace BA_Concurrency {
             Slot& slot = _slots[top];
 
             // Step 1
-            std::uint64_t expected_state = SCD_;
+            std::uint64_t expected_state = Slot_States::SCD;
             if (
                 !slot._state.compare_exchange_strong(
                     expected_state,
-                    SPP_,
+                    Slot_States::SPP,
                     std::memory_order_acq_rel,
                     std::memory_order_relaxed)) return false;
 
             // Step 2
-            slot->_data = std::forward<U>(data);
+            slot._data = std::forward<U>(data);
 
             // Step 3
-            slot._state.store(SPD_, std::memory_order_release);
+            slot._state.store(Slot_States::SPD, std::memory_order_release);
             return true;
         }
 
@@ -209,14 +206,14 @@ namespace BA_Concurrency {
         Stack(const Stack&) = delete;
         Stack& operator=(const Stack&) = delete;
 
-        // DOES NOT WAIT for the slots with SCP_ state
+        // DOES NOT WAIT for the slots with SCP state
         // APPLY this operation IF the consumer PERFORMS A TIME CONSUMING process!
         //
         // Operation steps:
         //   Step 1: loop the slots while the following CAS fails:
-        //             expected == SCD_, desired = SPP_
+        //             expected == SCD, desired = SPP
         //   Step 2: store the input data into the slot
-        //   Step 3: store SPD_ into the state
+        //   Step 3: store SPD into the state
         inline void busy_push(const T& data) noexcept(std::is_nothrow_copy_constructible_v<T>) {
             busy_push_helper(data);
         }
@@ -231,18 +228,16 @@ namespace BA_Concurrency {
             Slot *slot = &_slots[top];
 
             // Step 1
-            std::uint64_t expected_state = SCD_;
+            std::uint64_t expected_state = Slot_States::SCD;
             while (
                 !slot->_state.compare_exchange_strong(
                     expected_state,
-                    SPP_,
+                    Slot_States::SPP,
                     std::memory_order_acq_rel,
                     std::memory_order_relaxed))
             {
-                expected_state = SCD_;
-                ++top;
-                top &=  _MASK;
-                _top.store(top, std::memory_order_release);
+                expected_state = Slot_States::SCD;
+                top = (_top.fetch_add(1, std::memory_order_acq_rel) + 1) & _MASK;
                 slot = &_slots[top];
             };
 
@@ -250,55 +245,52 @@ namespace BA_Concurrency {
             slot->_data = T(std::forward<Args>(args)...);
 
             // Step 3
-            slot->_state.store(SPD_, std::memory_order_release);
+            slot->_state.store(Slot_States::SPD, std::memory_order_release);
         }
 
-        // DOES NOT WAIT for the slots with SPP_ state
+        // DOES NOT WAIT for the slots with SPP state
         // APPLY this operation IF the producer PERFORMS A TIME CONSUMING process!
         //
         // Operation steps:
         //   Step 1: loop the slots while the following CAS fails:
-        //             expected == SPD_, desired = SCP_
-        //   Step 2: store SCD_ into the state
+        //             expected == SPD, desired = SCP
+        //   Step 2: store SCD into the state
         //   Step 3: return the value
         T busy_pop() noexcept {
             std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
             Slot *slot = &_slots[top];
 
             // Step 1
-            std::uint64_t expected_state = SPD_;
+            std::uint64_t expected_state = Slot_States::SPD;
             while (
                 !slot->_state.compare_exchange_strong(
                     expected_state,
-                    SCP_,
+                    Slot_States::SCP,
                     std::memory_order_acq_rel,
                     std::memory_order_relaxed))
             {
-                expected_state = SPD_;
-                if (!top) top = _MASK;
-                else --top;
-                top &=  _MASK;
-                _top.store(top, std::memory_order_release);
+                expected_state = Slot_States::SPD;
+                top = (_top.fetch_sub(1, std::memory_order_acq_rel) - 1) & _MASK;
                 slot = &_slots[top];
             };
 
             // Step 2
-            slot->_state.store(SCD_, std::memory_order_release);
+            slot->_state.store(Slot_States::SCD, std::memory_order_release);
 
             // Step 3
             return std::move(slot->_data);
         }
 
-        // WAITS for the slots with SCP_ state
+        // WAITS for the slots with SCP state
         // APPLY this operation IF the consumer DOESN'T PERFORM A TIME CONSUMING process!
         //
         // Operation steps:
         //   Step 1: loop the slots while the following two CASs fail:
-        //             (expected == SCD_, desired = SPP_) and (expected == SCP_, desired = SPW_)
-        //   Step 2: IF Step 1 results with SPW_, wait till SCD_
-        //   Step 3: store SPP_ into the state
+        //             (expected == SCD, desired = SPP) and (expected == SCP, desired = SPW)
+        //   Step 2: IF Step 1 results with SPW, wait till SCD
+        //   Step 3: store SPP into the state
         //   Step 4: store the input data into the slot
-        //   Step 5: store SPD_ into the state
+        //   Step 5: store SPD into the state
         inline void wait_push(const T& data) noexcept(std::is_nothrow_copy_constructible_v<T>) {
             wait_push_helper(data);
         }
@@ -313,103 +305,98 @@ namespace BA_Concurrency {
             Slot *slot = &_slots[top];
 
             // Step 1
-            std::uint64_t expected_state_1 = SCD_;
-            std::uint64_t expected_state_2 = SCP_;
+            std::uint64_t expected_state_1 = Slot_States::SCD;
+            std::uint64_t expected_state_2 = Slot_States::SCP;
             while (true) {
                 while (
                     !slot->_state.compare_exchange_strong(
                         expected_state_1,
-                        SPP_,
+                        Slot_States::SPP,
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed) &&
                     !slot->_state.compare_exchange_strong(
                         expected_state_2,
-                        SPW_,
+                        Slot_States::SPW,
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed))
                 {
-                    expected_state_1 = SCD_;
-                    expected_state_2 = SCP_;
-                    ++top;
-                    top &=  _MASK;
-                    _top.store(top, std::memory_order_release);
+                    expected_state_1 = Slot_States::SCD;
+                    expected_state_2 = Slot_States::SCP;
+                    top = (_top.fetch_add(1, std::memory_order_acq_rel) + 1) & _MASK;
                     slot = &_slots[top];
                 };
 
                 // Step 2
-                while (slot->_state.load(std::memory_order_acquire) == SPW_);
+                while (slot->_state.load(std::memory_order_acquire) == Slot_States::SPW);
                 break;
             }
 
             // Step 3
-            if (slot->_state.load(std::memory_order_acquire) == SCD_)
-                slot->_state.store(SPP_, std::memory_order_release);
+            if (slot->_state.load(std::memory_order_acquire) == Slot_States::SCD)
+                slot->_state.store(Slot_States::SPP, std::memory_order_release);
 
             // Step 4
             slot->_data = T(std::forward<Args>(args)...);
 
             // Step 5
-            slot->_state.store(SPD_, std::memory_order_release);
+            slot->_state.store(Slot_States::SPD, std::memory_order_release);
         }
 
-        // WAITS for the slots with SPP_ state
+        // WAITS for the slots with SPP state
         // APPLY this operation IF the producer DOESN'T PERFORM A TIME CONSUMING process!
         //
         // Operation steps:
         //   Step 1: loop the slots while the following two CASs fail:
-        //             (expected == SPD_, desired = SCP_) and (expected == SPP_, desired = SCW_)
-        //   Step 2: IF Step 1 results with SCW_, wait till SPD_
-        //   Step 3: store SCD_ into the state
+        //             (expected == SPD, desired = SCP) and (expected == SPP, desired = SCW)
+        //   Step 2: IF Step 1 results with SCW, wait till SPD
+        //   Step 3: store SCD into the state
         //   Step 4: return the value
         T wait_pop() noexcept {
             std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
             Slot *slot = &_slots[top];
 
             // Step 1
-            std::uint64_t expected_state_1 = SPD_;
-            std::uint64_t expected_state_2 = SPP_;
+            std::uint64_t expected_state_1 = Slot_States::SPD;
+            std::uint64_t expected_state_2 = Slot_States::SPP;
             while (true) {
                 while (
                     !slot->_state.compare_exchange_strong(
                         expected_state_1,
-                        SCP_,
+                        Slot_States::SCP,
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed) &&
                     !slot->_state.compare_exchange_strong(
                         expected_state_2,
-                        SCW_,
+                        Slot_States::SCW,
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed))
                 {
-                    expected_state_1 = SPD_;
-                    expected_state_2 = SPP_;
-                    if (!top) top = _MASK;
-                    else --top;
-                    top &=  _MASK;
-                    _top.store(top, std::memory_order_release);
+                    expected_state_1 = Slot_States::SPD;
+                    expected_state_2 = Slot_States::SPP;
+                    top = (_top.fetch_sub(1, std::memory_order_acq_rel) - 1) & _MASK;
                     slot = &_slots[top];
                 };
 
                 // Step 2
-                while (slot->_state.load(std::memory_order_acquire) == SCW_);
+                while (slot->_state.load(std::memory_order_acquire) == Slot_States::SCW);
                 break;
             }
 
             // Step 3
-            slot->_state.store(SCD_, std::memory_order_release);
+            slot->_state.store(Slot_States::SCD, std::memory_order_release);
 
             // Step 4
             return std::move(slot->_data);
         }
 
-        // DOES NOT WAIT for the slots with SCP_ state
+        // DOES NOT WAIT for the slots with SCP state
         // APPLY this operation IF the consumer PERFORMS A TIME CONSUMING process!
         //
         // Operation steps:
         //   Step 1: return if the following CAS fails:
-        //             expected == SCD_, desired = SPP_
+        //             expected == SCD, desired = SPP
         //   Step 2: store the input data into the slot
-        //   Step 3: store SPD_ into the state
+        //   Step 3: store SPD into the state
         inline bool try_push(const T& data) noexcept(std::is_nothrow_copy_constructible_v<T>) {
             return try_push_helper(data);
         }
@@ -425,48 +412,45 @@ namespace BA_Concurrency {
             Slot& slot = _slots[top];
 
             // Step 1
-            std::uint64_t expected_state = SCD_;
+            std::uint64_t expected_state = Slot_States::SCD;
             if (
                 !slot._state.compare_exchange_strong(
                     expected_state,
-                    SPP_,
+                    Slot_States::SPP,
                     std::memory_order_acq_rel,
                     std::memory_order_relaxed)) return false;
 
             // Step 2
-            slot->_data = T(std::forward<Args>(args)...);
+            slot._data = T(std::forward<Args>(args)...);
 
             // Step 3
-            slot._state.store(SPD_, std::memory_order_release);
+            slot._state.store(Slot_States::SPD, std::memory_order_release);
             return true;
         }
 
-        // DOES NOT WAIT for the slots with SPP_ state
+        // DOES NOT WAIT for the slots with SPP state
         // APPLY this operation IF the producer PERFORMS A TIME CONSUMING process!
         //
         // Operation steps:
         //   Step 1: return if the following CAS fails:
-        //             expected == SPD_, desired = SCP_
-        //   Step 2: store SCD_ into the state
+        //             expected == SPD, desired = SCP
+        //   Step 2: store SCD into the state
         //   Step 3: return the value
         std::optional<T> try_pop() noexcept {
             std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
             Slot& slot = _slots[top];
 
             // Step 1
-            std::uint64_t expected_state = SPD_;
+            std::uint64_t expected_state = Slot_States::SPD;
             if (
                 !slot._state.compare_exchange_strong(
                     expected_state,
-                    SCP_,
+                    Slot_States::SCP,
                     std::memory_order_acq_rel,
-                    std::memory_order_relaxed))
-            {
-                return std::nullopt;
-            };
+                    std::memory_order_relaxed)) return std::nullopt;
 
             // Step 2
-            slot._state.store(SCD_, std::memory_order_release);
+            slot._state.store(Slot_States::SCD, std::memory_order_release);
 
             // Step 3
             return std::move(slot._data);
