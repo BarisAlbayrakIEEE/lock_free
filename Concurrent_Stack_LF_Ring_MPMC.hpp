@@ -101,7 +101,7 @@ namespace BA_Concurrency {
                     expected_state,
                     SPP_,
                     std::memory_order_acq_rel,
-                    std::memory_order_acquire))
+                    std::memory_order_relaxed))
             {
                 expected_state = SCD_;
                 ++top;
@@ -141,12 +141,12 @@ namespace BA_Concurrency {
                         expected_state_1,
                         SPP_,
                         std::memory_order_acq_rel,
-                        std::memory_order_acquire) &&
+                        std::memory_order_relaxed) &&
                     !slot->_state.compare_exchange_strong(
                         expected_state_2,
                         SPW_,
                         std::memory_order_acq_rel,
-                        std::memory_order_acquire))
+                        std::memory_order_relaxed))
                 {
                     expected_state_1 = SCD_;
                     expected_state_2 = SCP_;
@@ -193,7 +193,7 @@ namespace BA_Concurrency {
                     expected_state,
                     SPP_,
                     std::memory_order_acq_rel,
-                    std::memory_order_acquire)) return false;
+                    std::memory_order_relaxed)) return false;
 
             // Step 2
             slot->_data = std::forward<U>(data);
@@ -237,7 +237,7 @@ namespace BA_Concurrency {
                     expected_state,
                     SPP_,
                     std::memory_order_acq_rel,
-                    std::memory_order_acquire))
+                    std::memory_order_relaxed))
             {
                 expected_state = SCD_;
                 ++top;
@@ -272,7 +272,7 @@ namespace BA_Concurrency {
                     expected_state,
                     SCP_,
                     std::memory_order_acq_rel,
-                    std::memory_order_acquire))
+                    std::memory_order_relaxed))
             {
                 expected_state = SPD_;
                 if (!top) top = _MASK;
@@ -321,12 +321,12 @@ namespace BA_Concurrency {
                         expected_state_1,
                         SPP_,
                         std::memory_order_acq_rel,
-                        std::memory_order_acquire) &&
+                        std::memory_order_relaxed) &&
                     !slot->_state.compare_exchange_strong(
                         expected_state_2,
                         SPW_,
                         std::memory_order_acq_rel,
-                        std::memory_order_acquire))
+                        std::memory_order_relaxed))
                 {
                     expected_state_1 = SCD_;
                     expected_state_2 = SCP_;
@@ -374,12 +374,12 @@ namespace BA_Concurrency {
                         expected_state_1,
                         SCP_,
                         std::memory_order_acq_rel,
-                        std::memory_order_acquire) &&
+                        std::memory_order_relaxed) &&
                     !slot->_state.compare_exchange_strong(
                         expected_state_2,
                         SCW_,
                         std::memory_order_acq_rel,
-                        std::memory_order_acquire))
+                        std::memory_order_relaxed))
                 {
                     expected_state_1 = SPD_;
                     expected_state_2 = SPP_;
@@ -431,7 +431,7 @@ namespace BA_Concurrency {
                     expected_state,
                     SPP_,
                     std::memory_order_acq_rel,
-                    std::memory_order_acquire)) return false;
+                    std::memory_order_relaxed)) return false;
 
             // Step 2
             slot->_data = T(std::forward<Args>(args)...);
@@ -460,7 +460,7 @@ namespace BA_Concurrency {
                     expected_state,
                     SCP_,
                     std::memory_order_acq_rel,
-                    std::memory_order_acquire))
+                    std::memory_order_relaxed))
             {
                 return std::nullopt;
             };
