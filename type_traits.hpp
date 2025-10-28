@@ -6,6 +6,6 @@ namespace BA_Concurrency {
     inline constexpr bool is_same_template_v = false;
     template <template <typename> typename T>
     inline constexpr bool is_same_template_v<T, T> = true;
-} // namespace BA_Concurrency
+}
 
 #endif // TYPE_TRAITS_HPP

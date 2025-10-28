@@ -15,6 +15,6 @@ namespace BA_Concurrency {
         explicit Node(T&& data) : _data(std::move(data)) {}
         explicit Node(const T& data) : _data(data) {}
     };
-} // namespace BA_Concurrency
+}
 
 #endif // LINKED_CONTAINER_HPP
