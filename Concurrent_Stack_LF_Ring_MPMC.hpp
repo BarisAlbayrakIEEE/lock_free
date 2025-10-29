@@ -1,33 +1,48 @@
-// Stack: bounded lock-free MPMC stack over a contiguous ring buffer.
-// Requirements:
-// - capacity must be a power of two (for fast masking).
-// - T must be MoveConstructible, and ideally noexcept-movable for best guarantees.
+// Concurrent_Stack_LF_Ring_MPMC
 //
-// Semantics:
-// - push():
-//     reserves a unique "ticket" via fetch_add on _top (monotonic).
-//     The slot for that ticket is (ticket & mask). Producer waits until the
-//     slot's buffer index equals ticket (meaning it's empty for this cycle),
-//     constructs T in-place, then publishes by setting buffer index = ticket + 1.
-// - pop():
-//     grabs the most-recent ticket by CAS-decrementing _top. That yields
-//     ticket = old_top - 1 (LIFO). Consumer waits until the slot's buffer index equals
-//     ticket + 1 (meaning full), moves the data, destroys it, then marks the
-//     slot empty for the *next* wraparound by setting buffer index = ticket + capacity.
+// The brute force solution for the lock-free/MPMC/ring stack problem:
+//   Synchronize the top of the static ring buffer 
+//     which is shared between producer and consumer threads.
+//   Define an atomic state which allows managing the operation order
+//     within/between the producers and the consumers.
 //
-// Progress:
-// - Lock-free:
-//     A stalled thread can delay a specific slot but does
-//     not block others from operating on other slots.
-// - push():
-//     back-pressures when the stack is full by spinning on its reserved slot.
-// - pop():
-//     returns empty immediately if it cannot reserve a ticket (_top == 0).
-//
-// Notes:
-// - No dynamic allocation or reclamation:
-//     ABA is avoided by per-slot buffer index.
-// - Memory orders chosen to release data before visibility of "full" and to acquire data after observing "full".
+// Atomic slot states: 
+//   SPP: State-Producer-Progress: A producer is currently working on this slot
+//   SPW: State-Producer-Waiting : A producer is currently waiting for a consumer to finish working on this slot
+//   SPD: State-Producer-Done    : A producer has finished working on this slot
+//   SCP: State-Consumer-Progress: A consumer is currently working on this slot
+//   SCW: State-Consumer-Waiting : A consumer is currently waiting for a producer to finish working on this slot
+//   SCD: State-Consumer-Done    : A consumer has finished working on this slot
+//   
+// Configuration:
+//   Provides three options for each operation: busy, wait and try.
+//     Busy Configuration:
+//       Producers and consumers cycles the slots till they find a suitable slot
+//       which allows the requested operation.
+//       For example, a producer needs to find a slot with SCD state.
+//       During the cycle, the producers increment the atomic top via fetch_add,
+//       while the consumers decrements it via compare_exchange_strong(old, old - 1)
+//     Wait Configuration:
+//       In busy configuration, the threads can only claim aa slot
+//       if its in DONE state of the counter thread type.
+//       Hence, the producers look for SCD state, while the consumers for SPD state.
+//       However, PROGRESS state is skipped.
+//       In other words, while a thread owns a slot and works on the request,
+//       the counter threads cannot claim the slot.
+//       During this small window (after owning and before publishing period),
+//       the counters are not allowed to access the slot and would skip it.
+//       PROGRESS and WAITING states serve for this small window.
+//       The counter thread does npt skip the slot
+//       but updates the PROGRESS state as WAITING state
+//       waiting for the counter to update the state as DONE.
+//       Wait configuration allows the threads to operate on this small window.
+//     Try Configuration:
+//       Same as the busy configuration but does not loop through the slots
+//       but returns a success flag for the current slot.
+// 
+// CAUTION:
+//   Simpler conceptual model but not fully lock-free under heavy contention.
+//   See Concurrent_Stack_LF_Ring_MPMC_optimized for ticket-based lock-free version.
 
 #ifndef CONCURRENT_STACK_LF_RING_MPMC_HPP
 #define CONCURRENT_STACK_LF_RING_MPMC_HPP
@@ -70,7 +85,7 @@ namespace BA_Concurrency {
     {
         struct alignas(64) Slot {
             std::atomic<std::uint8_t> _state{ Slot_States::SCD };
-            alignas(64) T _data;
+            T _data;
         };
 
         // mask to modulo the ticket by capacity
@@ -82,6 +97,12 @@ namespace BA_Concurrency {
         // the buffer of slots
         Slot _slots[capacity];
 
+    public:
+
+        // Non-copyable / non-movable for simplicity
+        Stack(const Stack&) = delete;
+        Stack& operator=(const Stack&) = delete;
+
         // DOES NOT WAIT for the slots with SCP state
         // APPLY this operation IF the consumer PERFORMS A TIME CONSUMING process!
         //
@@ -90,8 +111,8 @@ namespace BA_Concurrency {
         //             expected == SCD, desired = SPP
         //   Step 2: store the input data into the slot
         //   Step 3: store SPD into the state
-        template <class U = T>
-        void busy_push_helper(U&& data) noexcept {
+        template <typename U = T>
+        void busy_push(U&& data) noexcept {
             std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
             Slot *slot = &_slots[top];
 
@@ -114,111 +135,6 @@ namespace BA_Concurrency {
 
             // Step 3
             slot->_state.store(Slot_States::SPD, std::memory_order_release);
-        }
-
-        // WAITS for the slots with SCP state
-        // APPLY this operation IF the consumer DOESN'T PERFORM A TIME CONSUMING process!
-        //
-        // Operation steps:
-        //   Step 1: loop the slots while the following two CASs fail:
-        //             (expected == SCD, desired = SPP) and (expected == SCP, desired = SPW)
-        //   Step 2: IF Step 1 results with SPW, wait till SCD
-        //   Step 3: store SPP into the state
-        //   Step 4: store the input data into the slot
-        //   Step 5: store SPD into the state
-        template <class U = T>
-        void wait_push_helper(U&& data) noexcept {
-            std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
-            Slot *slot = &_slots[top];
-
-            // Step 1
-            std::uint8_t expected_state_1 = Slot_States::SCD;
-            std::uint8_t expected_state_2 = Slot_States::SCP;
-            while (true) {
-                while (
-                    !slot->_state.compare_exchange_strong(
-                        expected_state_1,
-                        Slot_States::SPP,
-                        std::memory_order_acq_rel,
-                        std::memory_order_relaxed) &&
-                    !slot->_state.compare_exchange_strong(
-                        expected_state_2,
-                        Slot_States::SPW,
-                        std::memory_order_acq_rel,
-                        std::memory_order_relaxed))
-                {
-                    expected_state_1 = Slot_States::SCD;
-                    expected_state_2 = Slot_States::SCP;
-                    top = _top.fetch_add(1, std::memory_order_acq_rel) & _MASK;
-                    slot = &_slots[top];
-                };
-
-                // Step 2
-                while (slot->_state.load(std::memory_order_acquire) == Slot_States::SPW);
-                break;
-            }
-
-            // Step 3
-            if (slot->_state.load(std::memory_order_acquire) == Slot_States::SCD)
-                slot->_state.store(Slot_States::SPP, std::memory_order_release);
-
-            // Step 4
-            slot->_data = std::forward<U>(data);
-
-            // Step 5
-            slot->_state.store(Slot_States::SPD, std::memory_order_release);
-        }
-
-        // DOES NOT WAIT for the slots with SCP state
-        // APPLY this operation IF the consumer PERFORMS A TIME CONSUMING process!
-        //
-        // Operation steps:
-        //   Step 1: return if the following CAS fails:
-        //             expected == SCD, desired = SPP
-        //   Step 2: store the input data into the slot
-        //   Step 3: store SPD into the state
-        template <class U = T>
-        bool try_push_helper(U&& data) noexcept {
-            // Try to claim a slot with consumer/done state
-            std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
-            Slot& slot = _slots[top];
-
-            // Step 1
-            std::uint8_t expected_state = Slot_States::SCD;
-            if (
-                !slot._state.compare_exchange_strong(
-                    expected_state,
-                    Slot_States::SPP,
-                    std::memory_order_acq_rel,
-                    std::memory_order_relaxed)) return false;
-
-            // Step 2
-            slot._data = std::forward<U>(data);
-
-            // Step 3
-            slot._state.store(Slot_States::SPD, std::memory_order_release);
-            return true;
-        }
-
-    public:
-
-        // Non-copyable / non-movable for simplicity
-        Stack(const Stack&) = delete;
-        Stack& operator=(const Stack&) = delete;
-
-        // DOES NOT WAIT for the slots with SCP state
-        // APPLY this operation IF the consumer PERFORMS A TIME CONSUMING process!
-        //
-        // Operation steps:
-        //   Step 1: loop the slots while the following CAS fails:
-        //             expected == SCD, desired = SPP
-        //   Step 2: store the input data into the slot
-        //   Step 3: store SPD into the state
-        inline void busy_push(const T& data) noexcept(std::is_nothrow_copy_constructible_v<T>) {
-            busy_push_helper(data);
-        }
-        inline void busy_push(T&& data) noexcept(std::is_nothrow_move_constructible_v<T>) {
-            busy_push_helper(std::move(data));
         }
 
         // See descriptions (info for each step) of busy_push
@@ -295,11 +211,47 @@ namespace BA_Concurrency {
         //   Step 3: store SPP into the state
         //   Step 4: store the input data into the slot
         //   Step 5: store SPD into the state
-        inline void wait_push(const T& data) noexcept(std::is_nothrow_copy_constructible_v<T>) {
-            wait_push_helper(data);
-        }
-        inline void wait_push(T&& data) noexcept(std::is_nothrow_move_constructible_v<T>) {
-            wait_push_helper(std::move(data));
+        template <typename U = T>
+        void wait_push(U&& data) noexcept {
+            std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
+            Slot *slot = &_slots[top];
+
+            // Step 1
+            std::uint8_t expected_state_1 = Slot_States::SCD;
+            std::uint8_t expected_state_2 = Slot_States::SCP;
+            while (true) {
+                while (
+                    !slot->_state.compare_exchange_strong(
+                        expected_state_1,
+                        Slot_States::SPP,
+                        std::memory_order_acq_rel,
+                        std::memory_order_relaxed) &&
+                    !slot->_state.compare_exchange_strong(
+                        expected_state_2,
+                        Slot_States::SPW,
+                        std::memory_order_acq_rel,
+                        std::memory_order_relaxed))
+                {
+                    expected_state_1 = Slot_States::SCD;
+                    expected_state_2 = Slot_States::SCP;
+                    top = _top.fetch_add(1, std::memory_order_acq_rel) & _MASK;
+                    slot = &_slots[top];
+                };
+
+                // Step 2
+                while (slot->_state.load(std::memory_order_acquire) == Slot_States::SPW);
+                break;
+            }
+
+            // Step 3
+            if (slot->_state.load(std::memory_order_acquire) == Slot_States::SCD)
+                slot->_state.store(Slot_States::SPP, std::memory_order_release);
+
+            // Step 4
+            slot->_data = std::forward<U>(data);
+
+            // Step 5
+            slot->_state.store(Slot_States::SPD, std::memory_order_release);
         }
 
         // See descriptions (info for each step) of wait_push
@@ -377,11 +329,11 @@ namespace BA_Concurrency {
                 {
                     expected_state_1 = Slot_States::SPD;
                     expected_state_2 = Slot_States::SPP;
-                    top = _top.compare_exchange_strong(
+                    while(!_top.compare_exchange_strong(
                         top,
                         top - 1,
                         std::memory_order_acq_rel,
-                        std::memory_order_relaxed) & _MASK;
+                        std::memory_order_relaxed) & _MASK);
                     slot = &_slots[top];
                 };
 
@@ -405,17 +357,31 @@ namespace BA_Concurrency {
         //             expected == SCD, desired = SPP
         //   Step 2: store the input data into the slot
         //   Step 3: store SPD into the state
-        inline bool try_push(const T& data) noexcept(std::is_nothrow_copy_constructible_v<T>) {
-            return try_push_helper(data);
-        }
-        inline bool try_push(T&& data) noexcept(std::is_nothrow_move_constructible_v<T>) {
-            return try_push_helper(std::move(data));
+        template <typename U = T>
+        bool try_push(T&& data) noexcept {
+            std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
+            Slot& slot = _slots[top];
+
+            // Step 1
+            std::uint8_t expected_state = Slot_States::SCD;
+            if (
+                !slot._state.compare_exchange_strong(
+                    expected_state,
+                    Slot_States::SPP,
+                    std::memory_order_acq_rel,
+                    std::memory_order_relaxed)) return false;
+
+            // Step 2
+            slot._data = std::forward<U>(data);
+
+            // Step 3
+            slot._state.store(Slot_States::SPD, std::memory_order_release);
+            return true;
         }
 
         // See descriptions (info for each step) of try_push
         template <typename... Args>
         bool try_emplace(Args&&... args) noexcept {
-            // Try to claim a slot with consumer/done state
             std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
             Slot& slot = _slots[top];
 
