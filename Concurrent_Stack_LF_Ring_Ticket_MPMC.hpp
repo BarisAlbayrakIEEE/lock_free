@@ -1,3 +1,7 @@
+// Concurrent_Stack_LF_Ring_Ticket_MPMC
+//
+// TODO: see the documentation of Concurrent_Stack_LF_Ring_Brute_Force_MPMC
+//
 // Stack: bounded lock-free MPMC stack over a contiguous ring buffer.
 //
 // Requirements:
@@ -30,8 +34,8 @@
 //     ABA is avoided by per-slot expected_ticket.
 // - Memory orders chosen to release data before visibility of "full" and to acquire data after observing "full".
 
-#ifndef CONCURRENT_STACK_LF_RING_MPMC_OPTIMIZED_HPP
-#define CONCURRENT_STACK_LF_RING_MPMC_OPTIMIZED_HPP
+#ifndef CONCURRENT_STACK_LF_RING_TICKET_MPMC_HPP
+#define CONCURRENT_STACK_LF_RING_TICKET_MPMC_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -235,7 +239,7 @@ namespace BA_Concurrency {
     template <
         typename T,
         unsigned char Capacity_As_Pow2>
-    using stack_LF_ring_MPMC_optimized = Concurrent_Stack<
+    using stack_LF_ring_ticket_MPMC = Concurrent_Stack<
         true,
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::MPMC,
@@ -243,4 +247,4 @@ namespace BA_Concurrency {
         std::integral_constant<unsigned char, Capacity_As_Pow2>>;
 } // namespace BA_Concurrency
 
-#endif // CONCURRENT_STACK_LF_RING_MPMC_OPTIMIZED_HPP
+#endif // CONCURRENT_STACK_LF_RING_TICKET_MPMC_HPP

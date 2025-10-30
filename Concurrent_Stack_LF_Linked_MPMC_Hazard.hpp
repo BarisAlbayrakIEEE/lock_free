@@ -1,5 +1,7 @@
-#ifndef CONCURRENT_STACK_LF_LINKED_MPMC_HAZARD_HPP
-#define CONCURRENT_STACK_LF_LINKED_MPMC_HAZARD_HPP
+// TODO: DOCUMENTATION
+
+#ifndef CONCURRENT_STACK_LF_LINKED_HAZARD_MPMC_HPP
+#define CONCURRENT_STACK_LF_LINKED_HAZARD_MPMC_HPP
 
 #include <cassert>
 #include <cstddef>
@@ -140,7 +142,7 @@ namespace BA_Concurrency {
         typename T,
         typename Allocator = std::allocator<T>,
         std::size_t Hazard_Ptr_Record_Count = HAZARD_PTR_RECORD_COUNT__DEFAULT>
-    using stack_LF_linked_MPMC_hazard = Concurrent_Stack<
+    using stack_LF_linked_hazard_MPMC = Concurrent_Stack<
         true,
         Enum_Structure_Types::Linked,
         Enum_Concurrency_Models::MPMC,
@@ -149,4 +151,4 @@ namespace BA_Concurrency {
         std::integral_constant<std::size_t, Hazard_Ptr_Record_Count>>;
 } // namespace BA_Concurrency
 
-#endif // CONCURRENT_STACK_LF_LINKED_MPMC_HAZARD_HPP
+#endif // CONCURRENT_STACK_LF_LINKED_HAZARD_MPMC_HPP

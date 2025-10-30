@@ -1,7 +1,7 @@
-// Concurrent_Stack_LF_Ring_MPMC
+// Concurrent_Stack_LF_Ring_Brute_Force_MPSC
 //
 // Description:
-//   The brute force solution for the lock-free/MPMC/ring stack problem:
+//   The brute force solution for the lock-free/MPSC/ring stack problem:
 //     Synchronize the top of the static ring buffer 
 //       which is shared between producer and consumer threads.
 //     Define an atomic state per buffer slot
@@ -12,7 +12,7 @@
 // - T must be noexcept-movable.
 //
 // CAUTION:
-//   This is a simple conceptual model for a lock-free/ring-buffer/MPMC stack problem
+//   This is a simple conceptual model for a lock-free/ring-buffer/MPSC stack problem
 //   but actually not fully lock-free under heavy contention (i.e. obstruction-free)
 //   as the single atomic top synchronization allows
 //   each thread to execute only in isolation (i.e. no contention).
@@ -42,11 +42,11 @@
 //   SCD->SPP->SCW->SPR->SCP->SPW->SCR->SPP:
 //     a counter thread interferes and starts waiting during this thread is in progress (i.e. SPP and SCP)
 //
-// See Concurrent_Stack_LF_Ring_MPMC_optimized for ticket-based version
+// See Concurrent_Stack_LF_Ring_Ticket_MPSC for ticket-based version
 // which guarantees lock-free execution regardless of the contention.
 
-#ifndef CONCURRENT_STACK_LF_RING_MPMC_HPP
-#define CONCURRENT_STACK_LF_RING_MPMC_HPP
+#ifndef CONCURRENT_STACK_LF_RING_BRUTE_FORCE_MPSC_HPP
+#define CONCURRENT_STACK_LF_RING_BRUTE_FORCE_MPSC_HPP
 
 #include <cstddef>
 #include <atomic>
@@ -87,7 +87,7 @@ namespace BA_Concurrency {
     class Concurrent_Stack<
         true,
         Enum_Structure_Types::Static_Ring_Buffer,
-        Enum_Concurrency_Models::MPMC,
+        Enum_Concurrency_Models::MPSC,
         T,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>
     {
@@ -537,12 +537,12 @@ namespace BA_Concurrency {
     template <
         typename T,
         unsigned char Capacity_As_Pow2>
-    using stack_LF_ring_MPMC = Concurrent_Stack<
+    using stack_LF_ring_brute_force_MPSC = Concurrent_Stack<
         true,
         Enum_Structure_Types::Static_Ring_Buffer,
-        Enum_Concurrency_Models::MPMC,
+        Enum_Concurrency_Models::MPSC,
         T,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>;
 } // namespace BA_Concurrency
 
-#endif // CONCURRENT_STACK_LF_RING_MPMC_HPP
+#endif // CONCURRENT_STACK_LF_RING_BRUTE_FORCE_MPSC_HPP
