@@ -34,6 +34,7 @@
 #define CONCURRENT_STACK_LF_RING_MPMC_OPTIMIZED_HPP
 
 #include <cstddef>
+#include <cstdint>
 #include <atomic>
 #include <new>
 #include <type_traits>
@@ -77,11 +78,23 @@ namespace BA_Concurrency {
     public:
 
         // Initialize the buffer indices so that
-        // the very first producer that reserves top_ticket t
-        // sees slot._expected_ticket == t which means an empty slot for that cycle.
+        // the very first producer that reserves top_ticket will satisfy:
+        //   slot._expected_ticket == top_ticket
         Stack() noexcept {
             for (std::uint64_t i = 0; i < capacity; ++i) {
                 _slots[i]._expected_ticket.store(i, std::memory_order_relaxed);
+            }
+        }
+
+        // Assume single-threaded destruction.
+        // Remove the remaining (not-yet-popped) elements which satisfy:
+        //   slot._expected_ticket == top_ticket + 1
+        ~Stack() {
+            if constexpr (!std::is_trivially_destructible_v<T>) {
+                for (std::uint64_t i = 0; i < capacity; ++i) {
+                    auto expected_ticket = _slots[i]._expected_ticket.load(std::memory_order_relaxed);
+                    if (((expected_ticket - 1) & _MASK) == i) _slots[i].to_ptr()->~T();
+                }
             }
         }
 
@@ -114,7 +127,7 @@ namespace BA_Concurrency {
             Slot& slot = _slots[slot_index];
 
             // Spin until this slot is empty for this top_ticket (expected_ticket == top_ticket)
-            while (slot._expected_ticket.load(std::memory_order_acquire) != top_ticket) {}
+            while (slot._expected_ticket.load(std::memory_order_acquire) != top_ticket);
 
             // construct and publish
             ::new (slot.to_ptr()) T(std::forward<Args>(args)...);
@@ -145,12 +158,12 @@ namespace BA_Concurrency {
 
                     // Wait until producer finishes the publish (expected_ticket == top_ticket + 1).
                     // Another consumer can't take this top_ticket because we've reserved it by CAS on _top.
-                    while (slot._expected_ticket.load(std::memory_order_acquire) != top_ticket + 1) {}
+                    while (slot._expected_ticket.load(std::memory_order_acquire) != top_ticket + 1);
 
                     // Move the data and destroy in place
                     T* ptr = slot.to_ptr();
                     std::optional<T> data{std::move(*ptr)};
-                    ptr->~T();
+                    if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
 
                     // Mark slot empty for the next cycle.
                     // After a full cycle of capacity tickets, the same index will be used again.
@@ -158,7 +171,6 @@ namespace BA_Concurrency {
                     slot._expected_ticket.store(top_ticket + capacity, std::memory_order_release);
                     return data;
                 }
-                // CAS failed: retry CAS with the updated expected value
             }
         }
 
@@ -210,7 +222,7 @@ namespace BA_Concurrency {
             // Move the data and destroy in place
             T* ptr = slot.to_ptr();
             std::optional<T> data{std::move(*ptr)};
-            ptr->~T();
+            if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
 
             // Mark slot empty for the next cycle.
             // After a full cycle of capacity tickets, the same index will be used again.
