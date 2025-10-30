@@ -51,6 +51,15 @@
         "istream": "cpp",
         "sstream": "cpp",
         "thread": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "cstring": "cpp",
+        "bitset": "cpp",
+        "complex": "cpp",
+        "condition_variable": "cpp",
+        "list": "cpp",
+        "map": "cpp",
+        "set": "cpp",
+        "mutex": "cpp",
+        "typeindex": "cpp"
     }
 }
