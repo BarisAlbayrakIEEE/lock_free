@@ -1,25 +1,16 @@
 // Concurrent_Stack_LF_Ring_MPMC
 //
-// The brute force solution for the lock-free/MPMC/ring stack problem:
-//   Synchronize the top of the static ring buffer 
-//     which is shared between producer and consumer threads.
-//   Define an atomic state which allows managing the operation order
-//     within/between the producers and the consumers.
+// Description:
+//   The brute force solution for the lock-free/MPMC/ring stack problem:
+//     Synchronize the top of the static ring buffer 
+//       which is shared between producer and consumer threads.
+//     Define an atomic state per buffer slot
+//       which synchronizes the producers and consumers.
 //
-// Atomic slot states where PT and CT stand for producer and consumer threads respectively: 
-//   SPP: State-Producer-Progress: PT owns the slot and is operating on it
-//   SPW: State-Producer-Waiting : PT shares the slot ownership with a CT and waiting for the CT
-//   SPD: State-Producer-Done    : PT release the slot ownership after publishing the data
-//   SPR: State-Producer-Ready   : PT published the data and released the slot ownership to the waiting CT
-//   SCP: State-Consumer-Progress: CT owns the slot and is operating on it
-//   SCW: State-Consumer-Waiting : CT shares the slot ownership with a PT and waiting for the PT
-//   SCD: State-Consumer-Done    : CT release the slot ownership after popping the data
-//   SCR: State-Consumer-Ready   : CT popped the data and released the slot ownership to the waiting PT
+// Requirements:
+// - capacity must be a power of two (for fast masking).
+// - T must be noexcept-movable.
 //
-// Example state transitions for a slot:
-//   SCD->SPP->SPD->SCP->SCD
-//   SCD->SPP->SCW->SPR->SCP->SPW->SCR->SPP
-// 
 // CAUTION:
 //   This is a simple conceptual model for a lock-free/ring-buffer/MPMC stack problem
 //   but actually not fully lock-free under heavy contention (i.e. obstruction-free)
@@ -34,6 +25,22 @@
 //   the capacity of the buffer shall be increased.
 //   Amprically, the following equality results well to achieve a lock-free execution:
 //     capacity = 8 * N where N is the number of the threads
+//
+// Atomic slot states where PT and CT stand for producer and consumer threads respectively: 
+//   SPP: State-Producer-Progress: PT owns the slot and is operating on it
+//   SPW: State-Producer-Waiting : PT shares the slot ownership with a CT and waiting for the CT's notify
+//   SPD: State-Producer-Done    : PT released the slot ownership after storing the data
+//   SPR: State-Producer-Ready   : PT released the slot ownership to the waiting CT (notify CT) after storing the data
+//   SCP: State-Consumer-Progress: CT owns the slot and is operating on it
+//   SCW: State-Consumer-Waiting : CT shares the slot ownership with a PT and waiting for the PT's notify
+//   SCD: State-Consumer-Done    : CT released the slot ownership after popping the data
+//   SCR: State-Consumer-Ready   : CT released the slot ownership to the waiting PT (notify PT) after popping the data
+//
+// Example state transitions for a slot:
+//   SCD->SPP->SPD->SCP->SCD:
+//     no interference by counter threads while this thread is in progress (i.e. SPP and SCP)
+//   SCD->SPP->SCW->SPR->SCP->SPW->SCR->SPP:
+//     a counter thread interferes and starts waiting during this thread is in progress (i.e. SPP and SCP)
 //
 // See Concurrent_Stack_LF_Ring_MPMC_optimized for ticket-based version
 // which guarantees lock-free execution regardless of the contention.
