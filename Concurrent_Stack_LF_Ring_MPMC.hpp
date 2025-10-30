@@ -145,11 +145,11 @@ namespace BA_Concurrency {
                 if (CAS2) {
                     std::uint8_t expected_state_3 = Slot_States::SCR;
                     while(
-                        !slot->_state.compare_exchange_strong(
+                        !slot->_state.compare_exchange_weak(
                             expected_state_3,
                             Slot_States::SPP,
                             std::memory_order_acq_rel,
-                            std::memory_order_relaxed));
+                            std::memory_order_relaxed)) expected_state_3 = Slot_States::SCR;
                 }
                 break;
             }
@@ -229,11 +229,11 @@ namespace BA_Concurrency {
                 if (CAS2) {
                     std::uint8_t expected_state_3 = Slot_States::SCR;
                     while(
-                        !slot->_state.compare_exchange_strong(
+                        !slot->_state.compare_exchange_weak(
                             expected_state_3,
                             Slot_States::SPP,
                             std::memory_order_acq_rel,
-                            std::memory_order_relaxed));
+                            std::memory_order_relaxed)) expected_state_3 = Slot_States::SCR;
                 }
                 break;
             }
@@ -313,11 +313,11 @@ namespace BA_Concurrency {
                 if (CAS2) {
                     std::uint8_t expected_state_3 = Slot_States::SPR;
                     while(
-                        !slot->_state.compare_exchange_strong(
+                        !slot->_state.compare_exchange_weak(
                             expected_state_3,
                             Slot_States::SCP,
                             std::memory_order_acq_rel,
-                            std::memory_order_relaxed));
+                            std::memory_order_relaxed)) expected_state_3 = Slot_States::SCR;
                 }
                 break;
             }
