@@ -12,6 +12,6 @@ namespace BA_Concurrency {
         typename T,
         typename... Args>
     class Concurrent_Stack {};
-} // namespace BA_Concurrency
+}
 
 #endif // CONCURRENT_STACK_HPP

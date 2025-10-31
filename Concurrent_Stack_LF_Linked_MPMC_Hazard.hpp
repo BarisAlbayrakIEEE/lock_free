@@ -16,13 +16,13 @@
 #include <memory>
 #include "Node.hpp"
 #include "Concurrent_Stack.hpp"
+#include "enum_memory_reclaimers.hpp"
 #include "Hazard_Ptr.hpp"
 
 namespace BA_Concurrency {
-    // use stack_LF_linked_MPMC_hazard alias
-    // at the end of this file to get the defaults:
-    //     Allocator = std::allocator<T> -> no memory pool (default new/delete)
-    //     Hazard_Ptr_Record_Count = HAZARD_PTR_RECORD_COUNT__DEFAULT
+    // use stack_LF_linked_hazard_MPMC alias at the end of this file
+    // to get the right specialization of Concurrent_Stack
+    // and to achieve the default arguments consistently.
     template <
         typename T,
         typename Allocator,
@@ -36,9 +36,8 @@ namespace BA_Concurrency {
         Enum_Concurrency_Models::MPMC,
         T,
         Allocator,
-        std::integral_constant<std::size_t, Hazard_Ptr_Record_Count>
-    >
-        : public Linked_Container<T, Allocator>
+        std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Memory_Reclaimers::Hazard_Ptr)>,
+        std::integral_constant<std::size_t, Hazard_Ptr_Record_Count>>
     {
         using traits = std::allocator_traits<Allocator>;
         using allocator_type = Allocator;
@@ -148,6 +147,7 @@ namespace BA_Concurrency {
         Enum_Concurrency_Models::MPMC,
         T,
         Allocator,
+        std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Memory_Reclaimers::Hazard_Ptr)>,
         std::integral_constant<std::size_t, Hazard_Ptr_Record_Count>>;
 } // namespace BA_Concurrency
 

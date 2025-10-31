@@ -1,5 +1,58 @@
 // Concurrent_Stack_LF_Ring_Ticket_MPMC
 //
+// Description:
+//   The ticket solution for the lock-free/MPMC/ring stack problem:
+//     Synchronize the top of the static ring buffer 
+//       which is shared between producer and consumer threads.
+//     Define an atomic state per buffer slot
+//       which synchronizes the producers and consumers.
+//
+// Requirements:
+// - capacity must be a power of two (for fast masking).
+// - T must be noexcept-movable.
+//
+// CAUTION:
+//   This is a simple conceptual model for a lock-free/ring-buffer/MPMC stack problem
+//   but actually not fully lock-free under heavy contention (i.e. obstruction-free)
+//   as the single atomic top synchronization allows
+//   each thread to execute only in isolation (i.e. no contention).
+//   Actually, this is one-to-one conversion of a single thread queue to a concurrent one:
+//     a push increments the top index and a pop decrements it.
+//     wheree the synchronization for the top index is handled by a state flag.
+//
+// CAUTION:
+//   In order to reduce the collision probability,
+//   the capacity of the buffer shall be increased.
+//   Amprically, the following equality results well to achieve a lock-free execution:
+//     capacity = 8 * N where N is the number of the threads
+//
+// CAUTION:
+//   use stack_LF_ring_ticket_MPMC alias at the end of this file
+//   to get the right specialization of Concurrent_Stack
+//   and to achieve the default arguments consistently.
+//
+// Atomic slot states where PT and CT stand for producer and consumer threads respectively: 
+//   SPP: State-Producer-Progress: PT owns the slot and is operating on it
+//   SPW: State-Producer-Waiting : PT shares the slot ownership with a CT and waiting for the CT's notify
+//   SPD: State-Producer-Done    : PT released the slot ownership after storing the data
+//   SPR: State-Producer-Ready   : PT released the slot ownership to the waiting CT (notify CT) after storing the data
+//   SCP: State-Consumer-Progress: CT owns the slot and is operating on it
+//   SCW: State-Consumer-Waiting : CT shares the slot ownership with a PT and waiting for the PT's notify
+//   SCD: State-Consumer-Done    : CT released the slot ownership after popping the data
+//   SCR: State-Consumer-Ready   : CT released the slot ownership to the waiting PT (notify PT) after popping the data
+//
+// Example state transitions for a slot:
+//   SCD->SPP->SPD->SCP->SCD:
+//     no interference by counter threads while this thread is in progress (i.e. SPP and SCP)
+//   SCD->SPP->SCW->SPR->SCP->SPW->SCR->SPP:
+//     a counter thread interferes and starts waiting during this thread is in progress (i.e. SPP and SCP)
+//
+// See Concurrent_Stack_LF_Ring_Ticket_MPMC for ticket-based version
+// which guarantees lock-free execution regardless of the contention.
+
+
+// Concurrent_Stack_LF_Ring_Ticket_MPMC
+//
 // TODO: see the documentation of Concurrent_Stack_LF_Ring_Brute_Force_MPMC
 //
 // Stack: bounded lock-free MPMC stack over a contiguous ring buffer.
@@ -44,6 +97,7 @@
 #include <type_traits>
 #include <optional>
 #include "Concurrent_Stack.hpp"
+#include "enum_ring_designs.hpp"
 
 namespace BA_Concurrency {
     template <unsigned char power>
@@ -51,6 +105,9 @@ namespace BA_Concurrency {
         static constexpr std::size_t value = std::size_t(1) << power;
     };
     
+    // use stack_LF_ring_ticket_MPMC alias at the end of this file
+    // to get the right specialization of Concurrent_Stack
+    // and to achieve the default arguments consistently.
     template <
         typename T,
         unsigned char Capacity_As_Pow2>
@@ -62,6 +119,7 @@ namespace BA_Concurrency {
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::MPMC,
         T,
+        std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Ticket)>,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>
     {
         struct alignas(64) Slot {
@@ -244,6 +302,7 @@ namespace BA_Concurrency {
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::MPMC,
         T,
+        std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Ticket)>,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>;
 } // namespace BA_Concurrency
 

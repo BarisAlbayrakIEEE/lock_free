@@ -26,6 +26,11 @@
 //   Amprically, the following equality results well to achieve a lock-free execution:
 //     capacity = 8 * N where N is the number of the threads
 //
+// CAUTION:
+//   use stack_LF_ring_brute_force_SPSC alias at the end of this file
+//   to get the right specialization of Concurrent_Stack
+//   and to achieve the default arguments consistently.
+//
 // Atomic slot states where PT and CT stand for producer and consumer threads respectively: 
 //   SPP: State-Producer-Progress: PT owns the slot and is operating on it
 //   SPW: State-Producer-Waiting : PT shares the slot ownership with a CT and waiting for the CT's notify
@@ -49,11 +54,13 @@
 #define CONCURRENT_STACK_LF_RING_BRUTE_FORCE_SPSC_HPP
 
 #include <cstddef>
+#include <cstdint>
 #include <atomic>
 #include <new>
 #include <type_traits>
 #include <optional>
 #include "Concurrent_Stack.hpp"
+#include "enum_ring_designs.hpp"
 
 namespace BA_Concurrency {
     // Slot states
@@ -78,6 +85,9 @@ namespace BA_Concurrency {
         static constexpr std::size_t value = std::size_t(1) << power;
     };
     
+    // use stack_LF_ring_brute_force_SPSC alias at the end of this file
+    // to get the right specialization of Concurrent_Stack
+    // and to achieve the default arguments consistently.
     template <
         typename T,
         unsigned char Capacity_As_Pow2>
@@ -89,6 +99,7 @@ namespace BA_Concurrency {
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::SPSC,
         T,
+        std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Brute_Force)>,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>
     {
         struct alignas(64) Slot {
@@ -542,6 +553,7 @@ namespace BA_Concurrency {
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::SPSC,
         T,
+        std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Brute_Force)>,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>;
 } // namespace BA_Concurrency
 
