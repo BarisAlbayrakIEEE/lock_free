@@ -1,91 +1,68 @@
-// Concurrent_Stack_LF_Ring_Ticket_MPMC
+// Concurrent_Stack_LF_Ring_Ticket_MPMC.hpp
 //
 // Description:
-//   The ticket solution for the lock-free/MPMC/ring stack problem:
-//     Synchronize the top of the static ring buffer 
-//       which is shared between producer and consumer threads.
-//     Define an atomic state per buffer slot
-//       which synchronizes the producers and consumers.
+//   The ticket-based solution for the lock-free/ring/MPMC stack problem:
+//     Limits the shared data usage to the monotonic top counter
+//     by forcing each thread to work on different slots of the static buffer.
+//     Hence, the synchronization is limitted to the atomic top counter.
+//     The result is achieved by defining a ticket for each slot.
+//     A thread may operate on a slot if the ticket of the slot macthes the top counter.
 //
 // Requirements:
 // - capacity must be a power of two (for fast masking).
 // - T must be noexcept-movable.
 //
-// CAUTION:
-//   This is a simple conceptual model for a lock-free/ring-buffer/MPMC stack problem
-//   but actually not fully lock-free under heavy contention (i.e. obstruction-free)
-//   as the single atomic top synchronization allows
-//   each thread to execute only in isolation (i.e. no contention).
-//   Actually, this is one-to-one conversion of a single thread queue to a concurrent one:
-//     a push increments the top index and a pop decrements it.
-//     wheree the synchronization for the top index is handled by a state flag.
+// Semantics:
+//   push():
+//     Reserves a unique top_ticket via fetch_add on the monotonic top counter.
+//     The expected slot ticket for that top_ticket is:
+//       slot.expected_ticket = top_ticket & MASK
+//     where MASK is the bit masker that allows cycling the buffer.
+//     Producer waits until: slot.expected_ticket == top_ticket
+//     meaning that the slot is EMPTY for that cycle.
+//     When the wait condition is achieved,
+//     constructs T in-place and publishes the data
+//     by marking the slot as FULL: expected_ticket = top_ticket + 1
+//     meaning that the slot is ready for a pop.
+//   pop():
+//     Grabs the most-recent top_ticket by a CAS-decrement operation on the top counter.
+//     That yields top_ticket = old_top - 1 which ensures LIFO.
+//     Consumer waits until: slot.expected_ticket == top_ticket + 1
+//     meaning that the slot is FULL for that cycle.
+//     When the wait condition is achieved,
+//     moves the data, destroys it and
+//     marks the slot EMPTY: slot.expected_ticket = top_ticket + capacity
+//     meaning that for the next round the slot will be ready for a push.
 //
-// CAUTION:
-//   In order to reduce the collision probability,
-//   the capacity of the buffer shall be increased.
-//   Amprically, the following equality results well to achieve a lock-free execution:
-//     capacity = 8 * N where N is the number of the threads
+//   Try configurations (tyr_push and try_pop):
+//     Producers and consumers need to wait
+//     for the corresponding ticket conditions explained above.
+//     In try configuration, the threads do not wait but
+//     tries to execute the operation immediately.
+//     The operation is performed only if the ticket conditioned is satisfied.
+//
+// Progress:
+//   Lock-free:
+//     A stalled thread can delay a specific slot but
+//     does not block others from operating on other slots.
+//   push():
+//     back-pressures when the stack is full by spinning on its reserved slot.
+//   pop():
+//     returns empty immediately if it cannot reserve a top_ticket (_top == 0).
+//
+// Notes:
+//   No dynamic allocation or reclamation:
+//     ABA is avoided by slot.expected_ticket.
+//   Memory orders are chosen to release data before
+//   the visibility of FULL and to acquire data after observing FULL.
 //
 // CAUTION:
 //   use stack_LF_ring_ticket_MPMC alias at the end of this file
 //   to get the right specialization of Concurrent_Stack
 //   and to achieve the default arguments consistently.
 //
-// Atomic slot states where PT and CT stand for producer and consumer threads respectively: 
-//   SPP: State-Producer-Progress: PT owns the slot and is operating on it
-//   SPW: State-Producer-Waiting : PT shares the slot ownership with a CT and waiting for the CT's notify
-//   SPD: State-Producer-Done    : PT released the slot ownership after storing the data
-//   SPR: State-Producer-Ready   : PT released the slot ownership to the waiting CT (notify CT) after storing the data
-//   SCP: State-Consumer-Progress: CT owns the slot and is operating on it
-//   SCW: State-Consumer-Waiting : CT shares the slot ownership with a PT and waiting for the PT's notify
-//   SCD: State-Consumer-Done    : CT released the slot ownership after popping the data
-//   SCR: State-Consumer-Ready   : CT released the slot ownership to the waiting PT (notify PT) after popping the data
-//
-// Example state transitions for a slot:
-//   SCD->SPP->SPD->SCP->SCD:
-//     no interference by counter threads while this thread is in progress (i.e. SPP and SCP)
-//   SCD->SPP->SCW->SPR->SCP->SPW->SCR->SPP:
-//     a counter thread interferes and starts waiting during this thread is in progress (i.e. SPP and SCP)
-//
 // See Concurrent_Stack_LF_Ring_Ticket_MPMC for ticket-based version
 // which guarantees lock-free execution regardless of the contention.
-
-
-// Concurrent_Stack_LF_Ring_Ticket_MPMC
-//
-// TODO: see the documentation of Concurrent_Stack_LF_Ring_Brute_Force_MPMC
-//
-// Stack: bounded lock-free MPMC stack over a contiguous ring buffer.
-//
-// Requirements:
-// - capacity must be a power of two (for fast masking).
-// - T must be MoveConstructible, and ideally noexcept-movable for best guarantees.
-//
-// Semantics:
-// - push():
-//     reserves a unique "top_ticket" via fetch_add on _top (monotonic).
-//     The slot for that top_ticket is (top_ticket & mask). Producer waits until the
-//     slot's expected_ticket equals top_ticket (meaning it's empty for this cycle),
-//     constructs T in-place, then publishes by setting expected_ticket = top_ticket + 1.
-// - pop():
-//     grabs the most-recent top_ticket by CAS-decrementing _top. That yields
-//     top_ticket = old_top - 1 (LIFO). Consumer waits until the slot's expected_ticket equals
-//     top_ticket + 1 (meaning full), moves the data, destroys it, then marks the
-//     slot empty for the *next* wraparound by setting expected_ticket = top_ticket + capacity.
-//
-// Progress:
-// - Lock-free:
-//     A stalled thread can delay a specific slot but does
-//     not block others from operating on other slots.
-// - push():
-//     back-pressures when the stack is full by spinning on its reserved slot.
-// - pop():
-//     returns empty immediately if it cannot reserve a top_ticket (_top == 0).
-//
-// Notes:
-// - No dynamic allocation or reclamation:
-//     ABA is avoided by per-slot expected_ticket.
-// - Memory orders chosen to release data before visibility of "full" and to acquire data after observing "full".
 
 #ifndef CONCURRENT_STACK_LF_RING_TICKET_MPMC_HPP
 #define CONCURRENT_STACK_LF_RING_TICKET_MPMC_HPP
@@ -142,7 +119,7 @@ namespace BA_Concurrency {
         // Initialize the buffer indices so that
         // the very first producer that reserves top_ticket will satisfy:
         //   slot._expected_ticket == top_ticket
-        Stack() noexcept {
+        Concurrent_Stack() noexcept {
             for (std::uint64_t i = 0; i < capacity; ++i) {
                 _slots[i]._expected_ticket.store(i, std::memory_order_relaxed);
             }
@@ -151,7 +128,7 @@ namespace BA_Concurrency {
         // Assume single-threaded destruction.
         // Remove the remaining (not-yet-popped) elements which satisfy:
         //   slot._expected_ticket == top_ticket + 1
-        ~Stack() {
+        ~Concurrent_Stack() {
             if constexpr (!std::is_trivially_destructible_v<T>) {
                 for (std::uint64_t i = 0; i < capacity; ++i) {
                     auto expected_ticket = _slots[i]._expected_ticket.load(std::memory_order_relaxed);
@@ -161,8 +138,8 @@ namespace BA_Concurrency {
         }
 
         // Non-copyable / non-movable for simplicity
-        Stack(const Stack&) = delete;
-        Stack& operator=(const Stack&) = delete;
+        Concurrent_Stack(const Concurrent_Stack&) = delete;
+        Concurrent_Stack& operator=(const Concurrent_Stack&) = delete;
 
         // blocking (busy) push
         template <class U>

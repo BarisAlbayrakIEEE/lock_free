@@ -1,7 +1,7 @@
-// Concurrent_Stack_LF_Ring_Brute_Force_MPMC
+// Concurrent_Stack_LF_Ring_Brute_Force_MPMC.hpp
 //
 // Description:
-//   The brute force solution for the lock-free/MPMC/ring stack problem:
+//   The brute force solution for the lock-free/ring/MPMC stack problem:
 //     Synchronize the top of the static ring buffer 
 //       which is shared between producer and consumer threads.
 //     Define an atomic state per buffer slot
@@ -11,17 +11,99 @@
 // - capacity must be a power of two (for fast masking).
 // - T must be noexcept-movable.
 //
+// Semantics:
+//   Atomic slot states where PT and CT stand for producer and consumer threads respectively: 
+//     SPP: State-Producer-Progress: PT owns the slot and is operating on it
+//     SPW: State-Producer-Waiting : PT shares the slot ownership with a CT and waiting for the CT's notify
+//     SPD: State-Producer-Done    : PT released the slot ownership after storing the data
+//     SPR: State-Producer-Ready   : PT released the slot ownership to the waiting CT (notify CT) after storing the data
+//     SCP: State-Consumer-Progress: CT owns the slot and is operating on it
+//     SCW: State-Consumer-Waiting : CT shares the slot ownership with a PT and waiting for the PT's notify
+//     SCD: State-Consumer-Done    : CT released the slot ownership after popping the data
+//     SCR: State-Consumer-Ready   : CT released the slot ownership to the waiting PT (notify PT) after popping the data
+//
+//   push():
+//     Loops through the slot buffer to reserve a slot
+//     that has a suitable state for the operation:
+//       CONSUMER/DONE (SCD) or CONSUMER/PROGRESS (SCP).
+//     If the state is SCD (Case1), gets the ownership of the slot by CASing the state to:
+//       PRODUCER/PROGRESS (SPP)
+//     In Case1, writes the input data into the slot and publishes the data
+//     by CASing the state to PRODUCER/DONE (SPD).
+//     Otherwise (Case2), CASes the state of the slot to PRODUCER/WAITING (SPW).
+//     Notice that, now, both the consumer and producer share the slot ownership.
+//     This case simulates an exclusive shared ownership of a producer and a counter
+//     against the other threads operating on the stack.
+//     From this point on, the operations on the slot are SPSC
+//     which enables us to use notify semantics.
+//     Waits until the consumer finishes its work and CASes the state to CONSUMER/READY (SCR):
+//       slot->state.wait(SCR)
+//     When finished its job, the consumer notifies the waiting producer by:
+//       slot->state.notify_one(SCR)
+//     When the state changes to SCR, the OS will wake up the producer.
+//     When so, owns the slot by CASing the state to SPP.
+//     Writes the input data into the slot and publishes the data
+//     by CASing the state to SPD.
+//   pop():
+//     Pop is fully symmetric with push.
+//     However, in order to describe the use of the state in more detail
+//     I will go over the steps.
+//
+//     Loops through the slot buffer to reserve a slot
+//     that has a suitable state for the operation: SPD or SPP.
+//     If the state is SPD (Case1), gets the ownership of the slot by CASing the state to SCP.
+//     In Case1, writes the input data into the slot and publishes the data
+//     by CASing the state to SCD.
+//     Otherwise (Case2), CASes the state of the slot to SCW.
+//     Here, the SPSC window starts which enables us to use notify semantics.
+//     Waits until the producer finishes its work and CASes the state to SPR:
+//       slot->state.wait(SPR)
+//     When finished its job, the producer notifies the waiting consumer by:
+//       slot->state.notify_one(SPR)
+//     When the state changes to SPR, the OS will wake up the producer.
+//     When so, owns the slot by CASing the state to SCP.
+//     Pops the data from the slot and CASes the state to SCD.
+//
+//   Try configurations (tyr_push and try_pop):
+//     Producers and consumers need to loop through the slot buffer to reserve a slot
+//     that has a suitable state for the operation.
+//     In try configuration, the threads do not loop but
+//     tries to execute the operation immediately on the slot pointed by the top counnter.
+//     The operation is performed only if the top slot has a suitable state for the operation.
+//
+//   Example state transitions for a slot:
+//     SCD->SPP->SPD->SCP->SCD:
+//       no interference by counter threads while this thread is in progress (i.e. SPP and SCP)
+//     SCD->SPP->SCW->SPR->SCP->SPW->SCR->SPP:
+//       a counter thread interferes and starts waiting during this thread is in progress (i.e. SPP and SCP)
+//
+// Progress:
+//   Lock-free:
+//     fully lock-free under low contention (i.e. capacity >> Nthread).
+//   push():
+//     back-pressures when the stack is full by spinning for the two states: SCD or SCP.
+//   pop():
+//     back-pressures when the stack is empty by spinning for the two states: SPD or SPP.
+//
+// Notes:
+//   No dynamic allocation or reclamation:
+//     ABA is avoided by the state flag.
+//   Memory orders are chosen to
+//   release data before the visibility of the state transitions and
+//   to acquire data after observing the state transitions.
+//
 // CAUTION:
 //   This is a simple conceptual model for a lock-free/ring-buffer/MPMC stack problem
 //   but actually not fully lock-free under heavy contention (i.e. obstruction-free)
 //   as the single atomic top synchronization allows
-//   each thread to execute only in isolation (i.e. no contention).
+//   each thread to execute only in isolation.
 //   Actually, this is one-to-one conversion of a single thread queue to a concurrent one:
-//     a push increments the top index and a pop decrements it.
-//     wheree the synchronization for the top index is handled by a state flag.
+//     a push increments the top index and a pop decrements it
+//     where the synchronization for the top index is handled by a state flag.
 //
 // CAUTION:
-//   In order to reduce the collision probability,
+//   In order to reduce the collision probability
+//   (i.e. to switch from obstruction-free to lock-free),
 //   the capacity of the buffer shall be increased.
 //   Amprically, the following equality results well to achieve a lock-free execution:
 //     capacity = 8 * N where N is the number of the threads
@@ -31,24 +113,9 @@
 //   to get the right specialization of Concurrent_Stack
 //   and to achieve the default arguments consistently.
 //
-// Atomic slot states where PT and CT stand for producer and consumer threads respectively: 
-//   SPP: State-Producer-Progress: PT owns the slot and is operating on it
-//   SPW: State-Producer-Waiting : PT shares the slot ownership with a CT and waiting for the CT's notify
-//   SPD: State-Producer-Done    : PT released the slot ownership after storing the data
-//   SPR: State-Producer-Ready   : PT released the slot ownership to the waiting CT (notify CT) after storing the data
-//   SCP: State-Consumer-Progress: CT owns the slot and is operating on it
-//   SCW: State-Consumer-Waiting : CT shares the slot ownership with a PT and waiting for the PT's notify
-//   SCD: State-Consumer-Done    : CT released the slot ownership after popping the data
-//   SCR: State-Consumer-Ready   : CT released the slot ownership to the waiting PT (notify PT) after popping the data
-//
-// Example state transitions for a slot:
-//   SCD->SPP->SPD->SCP->SCD:
-//     no interference by counter threads while this thread is in progress (i.e. SPP and SCP)
-//   SCD->SPP->SCW->SPR->SCP->SPW->SCR->SPP:
-//     a counter thread interferes and starts waiting during this thread is in progress (i.e. SPP and SCP)
-//
-// See Concurrent_Stack_LF_Ring_Ticket_MPMC for ticket-based version
-// which guarantees lock-free execution regardless of the contention.
+// CAUTION:
+//   See Concurrent_Stack_LF_Ring_Ticket_MPMC for ticket-based version
+//   which guarantees lock-free execution regardless of the contention.
 
 #ifndef CONCURRENT_STACK_LF_RING_BRUTE_FORCE_MPMC_HPP
 #define CONCURRENT_STACK_LF_RING_BRUTE_FORCE_MPMC_HPP
@@ -119,8 +186,8 @@ namespace BA_Concurrency {
     public:
 
         // Non-copyable / non-movable for simplicity
-        Stack(const Stack&) = delete;
-        Stack& operator=(const Stack&) = delete;
+        Concurrent_Stack(const Concurrent_Stack&) = delete;
+        Concurrent_Stack& operator=(const Concurrent_Stack&) = delete;
 
         // Loops the slots for busy push operation
         //

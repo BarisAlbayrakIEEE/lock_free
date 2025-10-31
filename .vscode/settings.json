@@ -60,6 +60,8 @@
         "map": "cpp",
         "set": "cpp",
         "mutex": "cpp",
-        "typeindex": "cpp"
+        "typeindex": "cpp",
+        "unordered_set": "cpp",
+        "iostream": "cpp"
     }
 }
