@@ -77,7 +77,7 @@ namespace BA_Concurrency {
     // and to achieve the default arguments consistently.
     template <
         typename T,
-        typename Allocator,
+        template <typename> typename Allocator,
         std::size_t Hazard_Ptr_Record_Count>
     requires ( // for the thread safety of pop as it returns std::optional<T>
             std::is_nothrow_move_constructible_v<T> &&
@@ -87,29 +87,30 @@ namespace BA_Concurrency {
         Enum_Structure_Types::Linked,
         Enum_Concurrency_Models::MPMC,
         T,
-        Allocator,
+        Allocator<Node<T>>,
         std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Memory_Reclaimers::Hazard_Ptr)>,
         std::integral_constant<std::size_t, Hazard_Ptr_Record_Count>>
     {
-        using allocator_type = Allocator;
+        using allocator_type = Allocator<Node<T>>;
         using traits = std::allocator_traits<allocator_type>;
 
         // local aliases
         using _HPO = Hazard_Ptr_Owner<Hazard_Ptr_Record_Count>;
 
         allocator_type _allocator;
-        std::atomic<Node*> _head{ nullptr };
+        std::atomic<Node<T>*> _head{ nullptr };
 
     public:
 
         Concurrent_Stack() {};
-        explicit Concurrent_Stack(auto&& allocator) : _allocator(std::forward<Allocator>(allocator)) {};
+        explicit Concurrent_Stack(auto&& allocator)
+            : _allocator(std::forward<allocator_type>(allocator)) {};
 
         ~Concurrent_Stack() {
             // delete the not-yet-reclaimed nodes if exists any
-            Node* old_head = _head.load(std::memory_order_relaxed);
+            Node<T>* old_head = _head.load(std::memory_order_relaxed);
             while (old_head) {
-                Node* next = old_head->_next;
+                Node<T>* next = old_head->_next;
                 traits::deallocate(_allocator, old_head, 1);
                 old_head = next;
             }
@@ -129,7 +130,7 @@ namespace BA_Concurrency {
         // deleter to be supplied to Hazard_Ptr_Owner for deferred reclamation
         static void delete_node(void *ptr, void *context) {
             auto *allocator = static_cast<allocator_type*>(context);
-            Node* node = static_cast<Node*>(ptr);
+            Node<T>* node = static_cast<Node<T>*>(ptr);
             traits::destroy(*allocator, node);
             traits::deallocate(*allocator, node, 1);
         }
@@ -137,7 +138,7 @@ namespace BA_Concurrency {
         // push function with classic CAS loop
         template <typename U = T>
         void push(U&& data) {
-            Node* new_head = traits::allocate(_allocator, 1);
+            Node<T>* new_head = traits::allocate(_allocator, 1);
             new_head->_next = _head.load(std::memory_order_relaxed); // CAS loop will correct the next pointer
             new_head->_data = std::forward<U>(data);
             while (
@@ -157,9 +158,9 @@ namespace BA_Concurrency {
         std::optional<T> pop() {
             // CAS the head to the next while being protected by a hazard ptr
             _HPO hazard_ptr_owner;
-            Node* old_head = _head.load(std::memory_order_acquire);
+            Node<T>* old_head = _head.load(std::memory_order_acquire);
             do {
-                Node* temp;
+                Node<T>* temp;
                 do {
                     temp = old_head;
                     hazard_ptr_owner.protect(old_head); // protect by a hazard ptr
@@ -197,14 +198,14 @@ namespace BA_Concurrency {
 
     template <
         typename T,
-        typename Allocator = std::allocator<T>,
+        template <typename> typename Allocator = std::allocator,
         std::size_t Hazard_Ptr_Record_Count = HAZARD_PTR_RECORD_COUNT__DEFAULT>
     using stack_LF_linked_hazard_MPMC = Concurrent_Stack<
         true,
         Enum_Structure_Types::Linked,
         Enum_Concurrency_Models::MPMC,
         T,
-        Allocator,
+        Allocator<Node<T>>,
         std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Memory_Reclaimers::Hazard_Ptr)>,
         std::integral_constant<std::size_t, Hazard_Ptr_Record_Count>>;
 } // namespace BA_Concurrency
