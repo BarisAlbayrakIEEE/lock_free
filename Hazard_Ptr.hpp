@@ -1,3 +1,59 @@
+// Hazard_Ptr.hpp
+//
+// Description:
+//   The hazard pointers provides a solution for the destruction
+//   of the shared nodes of a lock-free/linked data structure:
+//     Pop operation needs to reclaim the memory for the head node.
+//     However, the other consumer threads working on the same node
+//     would have dangling pointers if the memory reclaim is not synchronized.
+//     A hazard pointer solves this issue by protecting the registered object.
+//     The memory can be reclaimed only when there exists no assigned hazard pointer.
+//
+// Requirements:
+// - T must be noexcept-movable.
+//
+// Semantics:
+//   push():
+//     Follows the classical algorithm for the push:
+//       1. Creates a new node.
+//       2. Sets the next pointer of the new node to the current head.
+//       3. Apply CAS on the head: CAS(new_node->head, new_node)
+//   pop():
+//     The classical pop routine is tuned
+//     to reclaim the memory of the old head
+//     under the protection of a hazard pointer:
+//       1. Protect the head node by a hazard pointer
+//       2. Apply CAS on the head: CAS(head, head->next)
+//       3. Clear the hazard pointer
+//       4. Move the data out from the old head node
+//       5. Reclaim the memory for the old head:
+//            old head will be destroyed if no other hazard is assigned to the node
+//       6. Return the data
+//
+// See the documentation of Hazard_Ptr.hpp for the details about the hazard pointers.
+//
+// CAUTION:
+//   The hazard pointers synchronize the memory reclamation
+//   (i.e. the race condition related to the head pointer destruction at the end of a pop).
+//   The race condition disappears when there exists a single consumer.
+//   Hence, the usage of hazard pointers is
+//   limited to the SPMC and MPMC configurations and
+//   the repository lacks headers for
+//   lock-free/linked/hazard solutions with SPSC and MPSC configurations.
+//   For these two configurations refer to lock-free/linked solutions instead.
+//   Hence, the list of headers for lock-free/linked solutions are:
+//     Concurrent_Stack_LF_Linked_SPSC.hpp
+//     Concurrent_Stack_LF_Linked_Hazard_SPMC.hpp
+//     Concurrent_Stack_LF_Linked_XX_SPMC.hpp (e.g. reference counter)
+//     Concurrent_Stack_LF_Linked_MPSC.hpp
+//     Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp
+//     Concurrent_Stack_LF_Linked_XX_MPMC.hpp (e.g. reference counter)
+//
+// CAUTION:
+//   use stack_LF_Linked_Hazard_MPMC alias at the end of this file
+//   to get the right specialization of Concurrent_Stack
+//   and to achieve the default arguments consistently.
+
 #ifndef HAZARD_PTR_HPP
 #define HAZARD_PTR_HPP
 
@@ -34,7 +90,7 @@ namespace BA_Concurrency {
     template <std::size_t HAZARD_PTR_RECORD_COUNT = HAZARD_PTR_RECORD_COUNT__DEFAULT>
     class Hazard_Ptr_Owner {
         inline constexpr std::size_t RECLAIM_TRESHOLD = 64;
-        static inline Hazard_Ptr_Record HAZARD_PTR_RECORDS[HAZARD_PTR_RECORD_COUNT];
+        static Hazard_Ptr_Record HAZARD_PTR_RECORDS[HAZARD_PTR_RECORD_COUNT];
         Hazard_Ptr_Record* _hazard_ptr_record;
 
         static Hazard_Ptr_Record* acquire_hazard_ptr_record() {
@@ -54,8 +110,8 @@ namespace BA_Concurrency {
             }
 
             // find an unpublished hazard ptr record
-            for (auto& hazard_ptr_record : HAZARD_PTR_RECORDS) {
-                std::thread::id empty_tid{};
+            std::thread::id empty_tid{};
+            for (auto& hazard_ptr_record : HAZARD_PTR_RECORDS)
                 if (
                     hazard_ptr_record._owner_thread.compare_exchange_strong(
                         empty_tid,
@@ -63,17 +119,14 @@ namespace BA_Concurrency {
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed))
                     return &hazard_ptr_record;
-            }
             // TODO:
-            //   all hazard ptrs are in use.
+            //   all hazard ptr records are in use.
             //   either increase HAZARD_PTR_RECORD_COUNT or use a dynamic registry.
             std::terminate();
         }
 
         // a helper function for the special functions.
         // reset the hazard ptr record to the default.
-        // notice the record is not destroyed
-        // as Hazard_Ptr_Owner does not has ownership on the hazard ptr record.
         void reset() {
             if (!_hazard_ptr_record) return;
             _hazard_ptr_record->_ptr.store(nullptr, std::memory_order_release);
@@ -81,7 +134,7 @@ namespace BA_Concurrency {
             _hazard_ptr_record = nullptr;
         }
 
-        // get all pointers protected by published hazard ptrs
+        // get all pointers protected by the hazard ptrs
         static std::unordered_set<void*> get_ptrs_protected_by_hazard_ptrs() {
             std::thread::id empty_tid{};
             std::unordered_set<void*> ptrs_protected_by_hazard_ptrs;
@@ -89,7 +142,15 @@ namespace BA_Concurrency {
             for (auto& hazard_ptr_record : HAZARD_PTR_RECORDS) {
                 if (hazard_ptr_record._owner_thread.load(std::memory_order_acquire) != empty_tid) {
                     if (void* ptr = hazard_ptr_record._ptr.load(std::memory_order_acquire)) {
-                        ptrs_protected_by_hazard_ptrs.insert(ptr);
+                        if (
+                            std::find(
+                                ptrs_protected_by_hazard_ptrs.cbegin(),
+                                ptrs_protected_by_hazard_ptrs.cend(),
+                                ptr) ==
+                            ptrs_protected_by_hazard_ptrs.cend())
+                        {
+                            ptrs_protected_by_hazard_ptrs.insert(ptr);
+                        }
                     }
                 }
             }

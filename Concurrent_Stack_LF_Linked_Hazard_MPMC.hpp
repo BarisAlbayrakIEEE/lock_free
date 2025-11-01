@@ -5,24 +5,13 @@
 //     Pop operation needs to reclaim the memory for the head node.
 //     However, the other consumer threads working on the same head
 //     would have dangling pointers if the memory reclaim is not synchronized.
-//     A hazard pointer solves this issue
-//     by protecting the object it is registered.
+//     A hazard pointer solves this issue by protecting the registered object.
 //     The memory can be reclaimed only when there exists no assigned hazard pointer.
 //
 // Requirements:
 // - T must be noexcept-movable.
 //
 // Semantics:
-//   Atomic slot states where PT and CT stand for producer and consumer threads respectively: 
-//     SPP: State-Producer-Progress: PT owns the slot and is operating on it
-//     SPW: State-Producer-Waiting : PT shares the slot ownership with a CT and waiting for the CT's notify
-//     SPD: State-Producer-Done    : PT released the slot ownership after storing the data
-//     SPR: State-Producer-Ready   : PT released the slot ownership to the waiting CT (notify CT) after storing the data
-//     SCP: State-Consumer-Progress: CT owns the slot and is operating on it
-//     SCW: State-Consumer-Waiting : CT shares the slot ownership with a PT and waiting for the PT's notify
-//     SCD: State-Consumer-Done    : CT released the slot ownership after popping the data
-//     SCR: State-Consumer-Ready   : CT released the slot ownership to the waiting PT (notify PT) after popping the data
-//
 //   push():
 //     Follows the classical algorithm for the push:
 //       1. Creates a new node.
@@ -40,12 +29,11 @@
 //            old head will be destroyed if no other hazard is assigned to the node
 //       6. Return the data
 //
-//   Try configurations (tyr_push and try_pop):
-//     Not needed as no wait procedure.
+// See the documentation of Hazard_Ptr.hpp for the details about the hazard pointers.
 //
 // CAUTION:
 //   The hazard pointers synchronize the memory reclamation
-//   (i.e. the race condition related to the head pointer destruction).
+//   (i.e. the race condition related to the head pointer destruction at the end of a pop).
 //   The race condition disappears when there exists a single consumer.
 //   Hence, the usage of hazard pointers is
 //   limited to the SPMC and MPMC configurations and
@@ -55,26 +43,15 @@
 //   Hence, the list of headers for lock-free/linked solutions are:
 //     Concurrent_Stack_LF_Linked_SPSC.hpp
 //     Concurrent_Stack_LF_Linked_Hazard_SPMC.hpp
-//     Concurrent_Stack_LF_Linked_XX_SPMC.hpp (e.g. reference counter, not yet developed)
+//     Concurrent_Stack_LF_Linked_XX_SPMC.hpp (e.g. reference counter)
 //     Concurrent_Stack_LF_Linked_MPSC.hpp
 //     Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp
-//     Concurrent_Stack_LF_Linked_XX_MPMC.hpp (e.g. reference counter, not yet developed)
+//     Concurrent_Stack_LF_Linked_XX_MPMC.hpp (e.g. reference counter)
 //
 // CAUTION:
-//   In order to reduce the collision probability
-//   (i.e. to switch from obstruction-free to lock-free),
-//   the capacity of the buffer shall be increased.
-//   Amprically, the following equality results well to achieve a lock-free execution:
-//     capacity = 8 * N where N is the number of the threads
-//
-// CAUTION:
-//   use stack_LF_ring_brute_force_MPMC alias at the end of this file
+//   use stack_LF_Linked_Hazard_MPMC alias at the end of this file
 //   to get the right specialization of Concurrent_Stack
 //   and to achieve the default arguments consistently.
-//
-// CAUTION:
-//   See Concurrent_Stack_LF_Ring_Ticket_MPMC for ticket-based version
-//   which guarantees lock-free execution regardless of the contention.
 
 #ifndef CONCURRENT_STACK_LF_LINKED_HAZARD_MPMC_HPP
 #define CONCURRENT_STACK_LF_LINKED_HAZARD_MPMC_HPP
