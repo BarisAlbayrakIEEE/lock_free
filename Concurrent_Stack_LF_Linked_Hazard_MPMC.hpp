@@ -179,9 +179,7 @@ namespace BA_Concurrency {
                 std::optional<T> data{ std::move(old_head->_data) };
 
                 // destroy the old head when all hazard ptrs are cleared
-                _HPO::reclaim_memory_later(
-                    static_cast<void*>(old_head),
-                    &delete_node);
+                _HPO::reclaim_memory_later(static_cast<void*>(old_head), &delete_node);
 
                 // reclaim the nodes that are not protected by any hazard ptr
                 _HPO::try_reclaim_memory();
