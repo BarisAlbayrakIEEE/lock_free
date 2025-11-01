@@ -1,11 +1,5 @@
-#ifndef LINKED_CONTAINER_HPP
-#define LINKED_CONTAINER_HPP
-
-#include <cstddef>
-#include <type_traits>
-#include <variant>
-#include <memory>
-#include "type_traits.hpp"
+#ifndef NODE_HPP
+#define NODE_HPP
 
 namespace BA_Concurrency {
     template <typename T>
@@ -17,4 +11,4 @@ namespace BA_Concurrency {
     };
 }
 
-#endif // LINKED_CONTAINER_HPP
+#endif // NODE_HPP
