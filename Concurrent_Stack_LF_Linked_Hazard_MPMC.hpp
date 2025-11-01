@@ -204,7 +204,7 @@ namespace BA_Concurrency {
         typename T,
         template <typename> typename Allocator = std::allocator,
         std::size_t Hazard_Ptr_Record_Count = HAZARD_PTR_RECORD_COUNT__DEFAULT>
-    using stack_LF_linked_hazard_MPMC = Concurrent_Stack<
+    using stack_LF_linked_hazard_MPMC1 = Concurrent_Stack<
         true,
         Enum_Structure_Types::Linked,
         Enum_Concurrency_Models::MPMC,
