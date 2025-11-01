@@ -116,7 +116,7 @@ namespace BA_Concurrency {
     // RAII class for the hazard ptrs
     template <std::size_t HAZARD_PTR_RECORD_COUNT = HAZARD_PTR_RECORD_COUNT__DEFAULT>
     class Hazard_Ptr_Owner {
-        inline constexpr std::size_t RECLAIM_THRESHOLD = HAZARD_PTR_RECORD_COUNT / 2;
+        static constexpr std::size_t RECLAIM_THRESHOLD = HAZARD_PTR_RECORD_COUNT / 2;
 
         // The list of the hazard ptrs are shared
         // Hazard ptrs are accessed synchronously based on the thread id.
@@ -178,7 +178,7 @@ namespace BA_Concurrency {
             for (auto& hazard_ptr_record : HAZARD_PTR_RECORDS) {
                 if (hazard_ptr_record._owner_thread.load(std::memory_order_acquire) != empty_tid) {
                     if (void* ptr = hazard_ptr_record._ptr.load(std::memory_order_acquire)) {
-                        if (ptrs_protected_by_hazard_ptrs.find(ptr) == ptrs_protected_by_hazard_ptrs.cend()) {
+                        if (!ptrs_protected_by_hazard_ptrs.contains(ptr)) {
                             ptrs_protected_by_hazard_ptrs.insert(ptr);
                         }
                     }
@@ -208,7 +208,7 @@ namespace BA_Concurrency {
         ~Hazard_Ptr_Owner() { reset(); }
 
         // get the protected ptr
-        void* get() const noexcept {
+        [[nodiscard]] void* get() const noexcept {
             return
                 _hazard_ptr_record ?
                 _hazard_ptr_record->_ptr.load(std::memory_order_acquire) :
@@ -233,13 +233,7 @@ namespace BA_Concurrency {
             std::vector<Memory_Reclaimer> memory_reclaimers__protected; // reclaimers with active hazard ptrs
             memory_reclaimers__protected.reserve(MEMORY_RECLAIMERS.size());
             for (auto& memory_reclaimer : MEMORY_RECLAIMERS) {
-                if (
-                    std::find(
-                        ptrs_protected_by_hazard_ptrs.cbegin(),
-                        ptrs_protected_by_hazard_ptrs.cend(),
-                        memory_reclaimer._ptr) ==
-                    ptrs_protected_by_hazard_ptrs.cend())
-                {
+                if (!ptrs_protected_by_hazard_ptrs.contains(memory_reclaimer._ptr)) {
                     memory_reclaimer._deleter(memory_reclaimer._ptr, memory_reclaimer._context); // reclaim the memory
                 } else {
                     memory_reclaimers__protected.push_back(memory_reclaimer);
@@ -250,10 +244,14 @@ namespace BA_Concurrency {
 
         // add the ptr into the deferred reclamation list
         static inline void reclaim_memory_later(void *ptr, void *context, void (*deleter)(void*, void*)) {
-            MEMORY_RECLAIMERS.push_back(Memory_Reclaimer{ptr, deleter});
+            MEMORY_RECLAIMERS.push_back(Memory_Reclaimer{ptr, context, deleter});
             if (MEMORY_RECLAIMERS.size() >= RECLAIM_THRESHOLD) try_reclaim_memory();
         }
     };
+
+    // instantiate HAZARD_PTR_RECORDS
+    template <std::size_t HAZARD_PTR_RECORD_COUNT>
+    Hazard_Ptr_Record Hazard_Ptr_Owner<HAZARD_PTR_RECORD_COUNT>::HAZARD_PTR_RECORDS[HAZARD_PTR_RECORD_COUNT];
 } // namespace BA_Concurrency
 
 #endif // HAZARD_PTR_HPP
