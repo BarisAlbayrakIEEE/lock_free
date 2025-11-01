@@ -162,13 +162,7 @@ namespace BA_Concurrency {
             for (auto& hazard_ptr_record : HAZARD_PTR_RECORDS) {
                 if (hazard_ptr_record._owner_thread.load(std::memory_order_acquire) != empty_tid) {
                     if (void* ptr = hazard_ptr_record._ptr.load(std::memory_order_acquire)) {
-                        if (
-                            std::find(
-                                ptrs_protected_by_hazard_ptrs.cbegin(),
-                                ptrs_protected_by_hazard_ptrs.cend(),
-                                ptr) ==
-                            ptrs_protected_by_hazard_ptrs.cend())
-                        {
+                        if (ptrs_protected_by_hazard_ptrs.find(ptr) == ptrs_protected_by_hazard_ptrs.cend()) {
                             ptrs_protected_by_hazard_ptrs.insert(ptr);
                         }
                     }
