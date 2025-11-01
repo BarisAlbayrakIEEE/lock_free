@@ -132,14 +132,15 @@ namespace BA_Concurrency {
             auto this_tid = std::this_thread::get_id();
 
             // if already owned (re-entrant use in same thread)
+            auto ite{ std::end(HAZARD_PTR_RECORDS) };
             if (
                 auto it = std::find_if(
-                    HAZARD_PTR_RECORDS.begin(),
-                    HAZARD_PTR_RECORDS.end(),
+                    std::begin(HAZARD_PTR_RECORDS),
+                    ite,
                     [&this_tid](const auto& hazard_ptr_record) {
                         return hazard_ptr_record._owner_thread.load(std::memory_order_acquire) == this_tid;
                     });
-                it != HAZARD_PTR_RECORDS.end())
+                it != ite)
             {
                 return &*it;
             }
