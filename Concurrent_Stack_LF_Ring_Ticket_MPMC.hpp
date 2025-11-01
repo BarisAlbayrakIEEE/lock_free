@@ -71,7 +71,6 @@
 #include <cstdint>
 #include <atomic>
 #include <new>
-#include <type_traits>
 #include <optional>
 #include "Concurrent_Stack.hpp"
 #include "enum_ring_designs.hpp"

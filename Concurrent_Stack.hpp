@@ -8,6 +8,7 @@
 #ifndef CONCURRENT_STACK_HPP
 #define CONCURRENT_STACK_HPP
 
+#include <type_traits>
 #include "enum_structure_types.hpp"
 #include "enum_concurrency_models.hpp"
 

@@ -65,7 +65,6 @@
 #include <optional>
 #include <algorithm>
 #include <utility>
-#include <type_traits>
 #include <memory>
 #include "Node.hpp"
 #include "Concurrent_Stack.hpp"
