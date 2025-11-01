@@ -1,13 +1,17 @@
 // Hazard_Ptr.hpp
 //
 // Description:
-//   The hazard pointers provides a solution for the destruction
-//   of the shared nodes of a lock-free/linked data structure:
-//     Pop operation needs to reclaim the memory for the head node.
-//     However, the other consumer threads working on the same node
-//     would have dangling pointers if the memory reclaim is not synchronized.
-//     A hazard pointer solves this issue by protecting the registered object.
-//     The memory can be reclaimed only when there exists no assigned hazard pointer.
+//   The hazard pointers provides a solution
+//   for the destruction of the shared objects
+//   during lock-free execution:
+//     1. Assign a hazard ptr to the object to prevent destruction of the obect by another thread
+//     2. Perform operations with the object under the protection of the hazard ptr
+//     3. Remove the protection of the hazard ptr (i.e. reset the hazard ptr)
+//     4. Try destroying the object
+//
+//   For the 4th step, a more efficient solution is trying to reclaim memory
+//   for all objects registered to the hazard ptr pool
+//   after the number of the protected objects reaches a treshold value.
 //
 // Requirements:
 // - T must be noexcept-movable.
@@ -89,7 +93,7 @@ namespace BA_Concurrency {
     // RAII class for the hazard ptrs
     template <std::size_t HAZARD_PTR_RECORD_COUNT = HAZARD_PTR_RECORD_COUNT__DEFAULT>
     class Hazard_Ptr_Owner {
-        inline constexpr std::size_t RECLAIM_TRESHOLD = 64;
+        inline constexpr std::size_t RECLAIM_TRESHOLD = HAZARD_PTR_RECORD_COUNT / 2;
         static Hazard_Ptr_Record HAZARD_PTR_RECORDS[HAZARD_PTR_RECORD_COUNT];
         Hazard_Ptr_Record* _hazard_ptr_record;
 

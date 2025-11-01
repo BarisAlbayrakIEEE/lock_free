@@ -147,13 +147,17 @@ namespace BA_Concurrency {
         }
 
         // pop function:
-        //   protect head with a hazard ptr and perform CAS
+        //   CAS the head to the next while being protected by a hazard ptr,
+        //   clear the hazard ptr,
+        //   extract data from the popped head,
+        //   add the popped head to the reclaim list,
+        //   return the data.
         std::optional<T> pop() {
+            // CAS the head to the next while being protected by a hazard ptr
             _HPO hazard_ptr_owner;
             Node* old_head = _head.load(std::memory_order_acquire);
             do {
                 Node* temp;
-                hazard_ptr_owner.protect(old_head);
                 do {
                     temp = old_head;
                     hazard_ptr_owner.protect(old_head); // protect by a hazard ptr
@@ -180,9 +184,6 @@ namespace BA_Concurrency {
 
                 // destroy the old head when all hazard ptrs are cleared
                 _HPO::reclaim_memory_later(static_cast<void*>(old_head), &delete_node);
-
-                // reclaim the nodes that are not protected by any hazard ptr
-                _HPO::try_reclaim_memory();
             }
             return data;
         }
