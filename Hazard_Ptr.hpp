@@ -1,62 +1,76 @@
 // Hazard_Ptr.hpp
 //
 // Description:
-//   The hazard pointers provides a solution
-//   for the destruction of the shared objects
+//   The hazard pointers allows safe destruction of the shared objects
 //   during lock-free execution:
-//     1. Assign a hazard ptr to the object to prevent destruction of the obect by another thread
-//     2. Perform operations with the object under the protection of the hazard ptr
-//     3. Remove the protection of the hazard ptr (i.e. reset the hazard ptr)
-//     4. Try destroying the object
+//     1. Assign a hazard ptr to the object ptr to prevent destruction of the object by another thread,
+//     2. Get the ownership of the object ptr under the protection of the hazard ptr,
+//     3. Remove the protection of the hazard ptr (i.e. reset the hazard ptr),
+//     4. Add the object ptr to the list of the objects to be reclaimed later.
 //
-//   For the 4th step, a more efficient solution is trying to reclaim memory
-//   for all objects registered to the hazard ptr pool
-//   after the number of the protected objects reaches a treshold value.
+//   The memory reclamation is performed on the defered list of reclaimers
+//   after the number of the reclaimers reaches a treshold value.
 //
 // Requirements:
 // - T must be noexcept-movable.
 //
+// Design:
+//   Types:
+//     Hazard_Ptr_Record:
+//       Defines the hazard ptr with two atomic members (safe synchronized access):
+//         _owner_thread: the thread requesting the hazard ptr
+//         _ptr         : the ptr to be protected by the hazard ptr
+//     Memory_Reclaimer:
+//       Defines the memory reclamation logic with two members:
+//         _ptr    : the ptr for which the pointee will be deleted
+//         _deleter: the function which deletes the pointee
+//     Hazard_Ptr_Owner:
+//       RAII class for hazard ptrs associating a hazard ptr record:
+//         _hazard_ptr_record
+//       Provides the hazard ptr interface:
+//         protect(void *ptr):
+//           Publishes the associated hazard ptr record with the input "ptr"
+//         clear():
+//           Resets the associated hazard ptr record to
+//           the default constructed thread id and nullptr
+//
+//       Defines the pool of the hazard ptr records which is shared by all threads:
+//         static Hazard_Ptr_Record HAZARD_PTR_RECORDS[HAZARD_PTR_RECORD_COUNT]
+//
+//   Additionally, a thread local pool of memory reclaimers
+//   allows accessing the memory reclaimers
+//   without the need for the synchronization primitives:
+//     inline thread_local std::vector<Memory_Reclaimer> MEMORY_RECLAIMERS;
+//
+//   The memory reclaimer pool can be defined global by a lock-free linked list.
+//   However, this would add more atomic operations into the execution paths
+//   which would decrease the performance.
+//
 // Semantics:
-//   push():
-//     Follows the classical algorithm for the push:
-//       1. Creates a new node.
-//       2. Sets the next pointer of the new node to the current head.
-//       3. Apply CAS on the head: CAS(new_node->head, new_node)
-//   pop():
-//     The classical pop routine is tuned
-//     to reclaim the memory of the old head
-//     under the protection of a hazard pointer:
-//       1. Protect the head node by a hazard pointer
-//       2. Apply CAS on the head: CAS(head, head->next)
-//       3. Clear the hazard pointer
-//       4. Move the data out from the old head node
-//       5. Reclaim the memory for the old head:
-//            old head will be destroyed if no other hazard is assigned to the node
-//       6. Return the data
-//
-// See the documentation of Hazard_Ptr.hpp for the details about the hazard pointers.
-//
-// CAUTION:
-//   The hazard pointers synchronize the memory reclamation
-//   (i.e. the race condition related to the head pointer destruction at the end of a pop).
-//   The race condition disappears when there exists a single consumer.
-//   Hence, the usage of hazard pointers is
-//   limited to the SPMC and MPMC configurations and
-//   the repository lacks headers for
-//   lock-free/linked/hazard solutions with SPSC and MPSC configurations.
-//   For these two configurations refer to lock-free/linked solutions instead.
-//   Hence, the list of headers for lock-free/linked solutions are:
-//     Concurrent_Stack_LF_Linked_SPSC.hpp
-//     Concurrent_Stack_LF_Linked_Hazard_SPMC.hpp
-//     Concurrent_Stack_LF_Linked_XX_SPMC.hpp (e.g. reference counter)
-//     Concurrent_Stack_LF_Linked_MPSC.hpp
-//     Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp
-//     Concurrent_Stack_LF_Linked_XX_MPMC.hpp (e.g. reference counter)
-//
-// CAUTION:
-//   use stack_LF_Linked_Hazard_MPMC alias at the end of this file
-//   to get the right specialization of Concurrent_Stack
-//   and to achieve the default arguments consistently.
+//   0. All hazard ptr records in Hazard_Ptr_Owner::HAZARD_PTR_RECORDS are initialized with:
+//        default constructed thread id and nullptr
+//   1. Hazard_Ptr_Owner::protect(void *ptr) method acquires a default constructed hazard ptr record
+//      from the shared Hazard_Ptr_Owner::HAZARD_PTR_RECORDS.
+//      Notice that, although HAZARD_PTR_RECORDS is not protected for synchronous access
+//      the contained hazard ptr records are.
+//      Hence, this operation is safe.
+//      Then, the hazard ptr record is published
+//      with the id of the requesting thread and the input ptr.
+//   2. Hazard_Ptr_Owner::clear method resets the associated hazard ptr record
+//      to the default constructed thread id and nullptr.
+//   3. Static Hazard_Ptr_Owner::reclaim_memory_later function
+//      pushes a new memory reclaimer into the thread_local MEMORY_RECLAIMERS.
+//   4. Static Hazard_Ptr_Owner::try_reclaim_memory function
+//      compares the thread local MEMORY_RECLAIMERS with the shared HAZARD_PTR_RECORDS
+//      and reclaim memory for each entry in MEMORY_RECLAIMERS
+//      which is not involved in HAZARD_PTR_RECORDS.
+//      In other words, per thread base, memory reclaim is performed
+//      for each memory reclaimer which holds a ptr not protected by any hazard ptr.
+//      In other words, in mathematical convention, the below set is reclaimed:
+//        RECLAIMERS_WITH_NOT_PROTECTED_PTRS = MEMORY_RECLAIMERS - HAZARD_PTR_RECORDS
+//      This function is called by reclaim_memory_later
+//      when the number of the size of MEMORY_RECLAIMERS reaches the treshold value
+//      which is set as the half of HAZARD_PTR_RECORD_COUNT template parameter.
 
 #ifndef HAZARD_PTR_HPP
 #define HAZARD_PTR_HPP
