@@ -88,15 +88,31 @@ namespace BA_Concurrency {
         void *_ptr{};
         void(*_deleter)(void*){};
     };
+
+    // list of Memory_Reclaimers:
+    //   a thread_local container is used as,
+    //   otherwise, it would require a synchronization (e.g. a lock-free list).
+    //   Hence, memory reclamation is performed per thread
+    //   on a separate list of objects to be deleted.
+    //   The list of the hazard ptrs (i.e. Hazard_Ptr_Owner<N>::HAZARD_PTR_RECORDS),
+    //   on the other hand, are shared and accessed synchronously based on the thread id.
     inline thread_local std::vector<Memory_Reclaimer> MEMORY_RECLAIMERS;
 
     // RAII class for the hazard ptrs
     template <std::size_t HAZARD_PTR_RECORD_COUNT = HAZARD_PTR_RECORD_COUNT__DEFAULT>
     class Hazard_Ptr_Owner {
         inline constexpr std::size_t RECLAIM_TRESHOLD = HAZARD_PTR_RECORD_COUNT / 2;
+
+        // The list of the hazard ptrs are shared
+        // Hazard ptrs are accessed synchronously based on the thread id.
         static Hazard_Ptr_Record HAZARD_PTR_RECORDS[HAZARD_PTR_RECORD_COUNT];
+
+        // The hazard ptr record is managed by the two member functions:
+        //   protect and clear
         Hazard_Ptr_Record* _hazard_ptr_record;
 
+        // get an unpublished hazard pointer
+        // CAUTION: See TODO comment at the end of the function
         static Hazard_Ptr_Record* acquire_hazard_ptr_record() {
             auto this_tid = std::this_thread::get_id();
 
@@ -181,6 +197,24 @@ namespace BA_Concurrency {
         Hazard_Ptr_Owner& operator=(const Hazard_Ptr_Owner&) = delete;
         ~Hazard_Ptr_Owner() { reset(); }
 
+        // get the protected ptr
+        void* get() const noexcept {
+            return
+                _hazard_ptr_record ?
+                _hazard_ptr_record->_ptr.load(std::memory_order_acquire) :
+                nullptr;
+        }
+
+        // protect a ptr with a hazard ptr
+        void protect(void* ptr) const noexcept {
+            _hazard_ptr_record->_ptr.store(ptr, std::memory_order_release);
+        }
+
+        // remove the hazard ptr protection from the ptr
+        void clear() const noexcept {
+            _hazard_ptr_record->_ptr.store(nullptr, std::memory_order_release);
+        }
+
         // try to reclaim all memory blocks those are not protected by any hazard ptr
         static void try_reclaim_memory() {
             if (MEMORY_RECLAIMERS.empty()) return;
@@ -208,24 +242,6 @@ namespace BA_Concurrency {
         static inline void reclaim_memory_later(void* ptr, void (*deleter)(void*)) {
             MEMORY_RECLAIMERS.push_back(Memory_Reclaimer{ptr, deleter});
             if (MEMORY_RECLAIMERS.size() >= RECLAIM_TRESHOLD) try_reclaim_memory();
-        }
-
-        // protect a ptr with a hazard ptr
-        void protect(void* ptr) const noexcept {
-            _hazard_ptr_record->_ptr.store(ptr, std::memory_order_release);
-        }
-
-        // get the protected ptr
-        void* get() const noexcept {
-            return
-                _hazard_ptr_record ?
-                _hazard_ptr_record->_ptr.load(std::memory_order_acquire) :
-                nullptr;
-        }
-
-        // remove the hazard ptr protection from the ptr
-        void clear() const noexcept {
-            _hazard_ptr_record->_ptr.store(nullptr, std::memory_order_release);
         }
     };
 } // namespace BA_Concurrency
