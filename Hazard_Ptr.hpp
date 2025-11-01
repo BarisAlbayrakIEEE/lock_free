@@ -115,7 +115,7 @@ namespace BA_Concurrency {
     // RAII class for the hazard ptrs
     template <std::size_t HAZARD_PTR_RECORD_COUNT = HAZARD_PTR_RECORD_COUNT__DEFAULT>
     class Hazard_Ptr_Owner {
-        inline constexpr std::size_t RECLAIM_TRESHOLD = HAZARD_PTR_RECORD_COUNT / 2;
+        inline constexpr std::size_t RECLAIM_THRESHOLD = HAZARD_PTR_RECORD_COUNT / 2;
 
         // The list of the hazard ptrs are shared
         // Hazard ptrs are accessed synchronously based on the thread id.
@@ -249,7 +249,7 @@ namespace BA_Concurrency {
         // add the ptr into the deferred reclamation list
         static inline void reclaim_memory_later(void* ptr, void (*deleter)(void*)) {
             MEMORY_RECLAIMERS.push_back(Memory_Reclaimer{ptr, deleter});
-            if (MEMORY_RECLAIMERS.size() >= RECLAIM_TRESHOLD) try_reclaim_memory();
+            if (MEMORY_RECLAIMERS.size() >= RECLAIM_THRESHOLD) try_reclaim_memory();
         }
     };
 } // namespace BA_Concurrency

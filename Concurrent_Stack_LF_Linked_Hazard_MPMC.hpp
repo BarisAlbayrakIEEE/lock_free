@@ -101,11 +101,6 @@ namespace BA_Concurrency {
         allocator_type _allocator;
         std::atomic<Node*> _head{ nullptr };
 
-        // deleter to be supplied to Hazard_Ptr_Owner for deferred reclamation
-        static void delete_node(void* ptr) {
-            traits::deallocate(_allocator, ptr, 1);
-        }
-
     public:
 
         Concurrent_Stack() {};
@@ -131,6 +126,11 @@ namespace BA_Concurrency {
         Concurrent_Stack& operator=(const Concurrent_Stack&) = delete;
         Concurrent_Stack(Concurrent_Stack&&) = delete;
         Concurrent_Stack& operator=(Concurrent_Stack&&) = delete;
+
+        // deleter to be supplied to Hazard_Ptr_Owner for deferred reclamation
+        void delete_node(void* ptr) {
+            traits::deallocate(_allocator, ptr, 1);
+        }
 
         // push function with classic CAS loop
         template <typename U = T>
@@ -178,7 +178,7 @@ namespace BA_Concurrency {
             std::optional<T> data{ std::nullopt };
             if (old_head) {
                 // extract the data from the popped head
-                std::optional<T> data{ std::move(old_head->_data) };
+                data = std::move(old_head->_data);
 
                 // add the popped head to the reclaim list
                 _HPO::reclaim_memory_later(static_cast<void*>(old_head), &delete_node);
