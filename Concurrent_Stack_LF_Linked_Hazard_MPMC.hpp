@@ -23,10 +23,9 @@
 //     under the protection of a hazard pointer:
 //       1. Protect the head node by a hazard pointer
 //       2. Apply CAS on the head: CAS(head, head->next)
-//       3. Clear the hazard pointer
-//       4. Move the data out from the old head node
-//       5. Reclaim the memory for the old head:
-//            old head will be destroyed if no other hazard is assigned to the node
+//       3. Move the data out from the old head node
+//       4. Clear the hazard pointer
+//       5. Add the old head to the reclaim list
 //       6. Return the data
 //
 // See the documentation of Hazard_Ptr.hpp for the details about the hazard pointers.
@@ -102,7 +101,7 @@ namespace BA_Concurrency {
 
     public:
 
-        Concurrent_Stack() {};
+        Concurrent_Stack() = default;
         explicit Concurrent_Stack(auto&& allocator)
             : _allocator(std::forward<allocator_type>(allocator)) {};
 
@@ -111,14 +110,18 @@ namespace BA_Concurrency {
             Node<T>* old_head = _head.load(std::memory_order_relaxed);
             while (old_head) {
                 Node<T>* next = old_head->_next;
+                traits::destroy(_allocator, old_head);
                 traits::deallocate(_allocator, old_head, 1);
                 old_head = next;
             }
 
-            // reclaim all memory
-            for (auto& memory_reclaimer : MEMORY_RECLAIMERS)
-                memory_reclaimer._deleter(memory_reclaimer._ptr);
-            MEMORY_RECLAIMERS.clear();
+            // reclaim the defered reclaimers
+            // TODO:
+            //   Defered reclamation is pre thread base.
+            //   Hence, executing the deferedd reclamation from the single-thread destructor
+            //   would leak memory.
+            //   Consider switching to global reclamation or other solutions.
+            _HPO::try_reclaim_memory();
         }
 
         // Non-copyable/movable for simplicity.
@@ -151,14 +154,15 @@ namespace BA_Concurrency {
 
         // pop function:
         //   CAS the head to the next while being protected by a hazard ptr,
-        //   clear the hazard ptr,
         //   extract the data from the popped head,
+        //   clear the hazard ptr,
         //   add the popped head to the reclaim list,
         //   return the data.
         std::optional<T> pop() {
             // CAS the head to the next while being protected by a hazard ptr
             _HPO hazard_ptr_owner;
             Node<T>* old_head = _head.load(std::memory_order_acquire);
+            if (!old_head) return std::nullopt;
             do {
                 Node<T>* temp;
                 do {
@@ -173,15 +177,15 @@ namespace BA_Concurrency {
                     old_head->_next,
                     std::memory_order_acq_rel,
                     std::memory_order_acquire));
-            
-            // clear the hazard ptr
-            hazard_ptr_owner.clear();
 
             // extract the data
             std::optional<T> data{ std::nullopt };
             if (old_head) {
                 // extract the data from the popped head
                 data = std::move(old_head->_data);
+            
+                // clear the hazard ptr as the head is owned by this thread now
+                hazard_ptr_owner.clear();
 
                 // add the popped head to the reclaim list
                 _HPO::reclaim_memory_later(static_cast<void*>(old_head), &_allocator, &delete_node);
