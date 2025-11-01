@@ -149,7 +149,7 @@ namespace BA_Concurrency {
         // pop function:
         //   CAS the head to the next while being protected by a hazard ptr,
         //   clear the hazard ptr,
-        //   extract data from the popped head,
+        //   extract the data from the popped head,
         //   add the popped head to the reclaim list,
         //   return the data.
         std::optional<T> pop() {
@@ -174,17 +174,17 @@ namespace BA_Concurrency {
             // clear the hazard ptr
             hazard_ptr_owner.clear();
 
-            // return the data if popped successfully
+            // extract the data
             std::optional<T> data{ std::nullopt };
             if (old_head) {
-                // guaranteed to be safe as:
-                //   std::is_nothrow_move_constructible_v<T> &&
-                //   std::is_nothrow_move_assignable_v<T>
+                // extract the data from the popped head
                 std::optional<T> data{ std::move(old_head->_data) };
 
-                // destroy the old head when all hazard ptrs are cleared
+                // add the popped head to the reclaim list
                 _HPO::reclaim_memory_later(static_cast<void*>(old_head), &delete_node);
             }
+
+            // return the data
             return data;
         }
 
