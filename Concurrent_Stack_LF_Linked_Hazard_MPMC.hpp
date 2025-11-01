@@ -92,8 +92,8 @@ namespace BA_Concurrency {
         std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Memory_Reclaimers::Hazard_Ptr)>,
         std::integral_constant<std::size_t, Hazard_Ptr_Record_Count>>
     {
-        using traits = std::allocator_traits<Allocator>;
         using allocator_type = Allocator;
+        using traits = std::allocator_traits<allocator_type>;
 
         // local aliases
         using _HPO = Hazard_Ptr_Owner<Hazard_Ptr_Record_Count>;
@@ -128,8 +128,11 @@ namespace BA_Concurrency {
         Concurrent_Stack& operator=(Concurrent_Stack&&) = delete;
 
         // deleter to be supplied to Hazard_Ptr_Owner for deferred reclamation
-        void delete_node(void* ptr) {
-            traits::deallocate(_allocator, ptr, 1);
+        static void delete_node(void *ptr, void *context) {
+            auto *allocator = static_cast<allocator_type*>(context);
+            Node* node = static_cast<Node*>(ptr);
+            traits::destroy(*allocator, node);
+            traits::deallocate(*allocator, node, 1);
         }
 
         // push function with classic CAS loop
@@ -181,7 +184,7 @@ namespace BA_Concurrency {
                 data = std::move(old_head->_data);
 
                 // add the popped head to the reclaim list
-                _HPO::reclaim_memory_later(static_cast<void*>(old_head), &delete_node);
+                _HPO::reclaim_memory_later(static_cast<void*>(old_head), &_allocator, &delete_node);
             }
 
             // return the data

@@ -100,7 +100,8 @@ namespace BA_Concurrency {
     // deferred memory reclamation wrapper
     struct Memory_Reclaimer {
         void *_ptr{};
-        void(*_deleter)(void*){};
+        void *_context{};
+        void(*_deleter)(void*, void*){};
     };
 
     // list of Memory_Reclaimers:
@@ -238,7 +239,7 @@ namespace BA_Concurrency {
                         memory_reclaimer._ptr) ==
                     ptrs_protected_by_hazard_ptrs.cend())
                 {
-                    memory_reclaimer._deleter(memory_reclaimer._ptr); // reclaim the memory
+                    memory_reclaimer._deleter(memory_reclaimer._ptr, memory_reclaimer._context); // reclaim the memory
                 } else {
                     memory_reclaimers__protected.push_back(memory_reclaimer);
                 }
@@ -247,7 +248,7 @@ namespace BA_Concurrency {
         }
 
         // add the ptr into the deferred reclamation list
-        static inline void reclaim_memory_later(void* ptr, void (*deleter)(void*)) {
+        static inline void reclaim_memory_later(void *ptr, void *context, void (*deleter)(void*, void*)) {
             MEMORY_RECLAIMERS.push_back(Memory_Reclaimer{ptr, deleter});
             if (MEMORY_RECLAIMERS.size() >= RECLAIM_THRESHOLD) try_reclaim_memory();
         }
