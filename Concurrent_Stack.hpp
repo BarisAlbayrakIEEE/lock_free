@@ -1,3 +1,10 @@
+// Primary template for Concurrent_Stack.
+// Specialized by:
+//   - structure type
+//   - concurrency model
+//   - some additional case dependent arguments
+//     Ex: Enum_Structure_Types::Linked requires a memory reclaimer pattern
+//         such as the hazard pointers
 #ifndef CONCURRENT_STACK_HPP
 #define CONCURRENT_STACK_HPP
 
