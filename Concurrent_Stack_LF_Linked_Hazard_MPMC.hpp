@@ -14,8 +14,8 @@
 // Semantics:
 //   push():
 //     Follows the classical algorithm for the push:
-//       1. Creates a new node.
-//       2. Sets the next pointer of the new node to the current head.
+//       1. Create a new node.
+//       2. Set the next pointer of the new node to the current head.
 //       3. Apply CAS on the head: CAS(new_node->head, new_node)
 //   pop():
 //     The classical pop routine is tuned
@@ -30,7 +30,21 @@
 //
 // See the documentation of Hazard_Ptr.hpp for the details about the hazard pointers.
 //
-// CAUTION:
+// CAUTION-1:
+//   In case of a single producer (i.e. SPMC and SPSC),
+//   the competition between the single producer and the consumer(s) remain
+//   which means that the synchronization between the counterparts is still required.
+//   On the other hand, single consumer configuration is special
+//   and is explained in the next caution.
+//   As the single producer configuration has no effect on this design,
+//   I will use the same specialization for the following two configurations:
+//     MPMC and SPMC
+//   
+//   See the two aliases at the end:
+//     stack_LF_linked_hazard_MPMC
+//     stack_LF_linked_hazard_SPMC = stack_LF_linked_hazard_MPMC
+//
+// CAUTION-2:
 //   The hazard pointers synchronize the memory reclamation
 //   (i.e. the race condition related to the head pointer destruction at the end of a pop).
 //   The race condition disappears when there exists a single consumer.
@@ -39,16 +53,15 @@
 //   the repository lacks headers for
 //   lock-free/linked/hazard solutions with SPSC and MPSC configurations.
 //   For these two configurations refer to lock-free/linked solutions instead.
-//   Hence, the list of headers for lock-free/linked solutions are:
-//     Concurrent_Stack_LF_Linked_SPSC.hpp
-//     Concurrent_Stack_LF_Linked_Hazard_SPMC.hpp
-//     Concurrent_Stack_LF_Linked_XX_SPMC.hpp (e.g. reference counter)
-//     Concurrent_Stack_LF_Linked_MPSC.hpp
-//     Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp
-//     Concurrent_Stack_LF_Linked_XX_MPMC.hpp (e.g. reference counter)
+//   Together with CAUTION-1,
+//   the list of headers for lock-free/linked solutions are:
+//     Concurrent_Stack_LF_Linked_MPSC.hpp // applicable to Concurrent_Stack_LF_Linked_SPSC as well
+//     Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp // applicable to Concurrent_Stack_LF_Linked_SPMC as well
+//     Concurrent_Stack_LF_Linked_XX_MPMC.hpp (e.g. XX = reference_counter)
+//     Concurrent_Stack_LF_Linked_XX_SPMC.hpp (e.g. XX = reference_counter)
 //
-// CAUTION:
-//   use stack_LF_Linked_Hazard_MPMC alias at the end of this file
+// CAUTION-3:
+//   use stack_LF_Linked_MPMC and stack_LF_Linked_SPMC aliases at the end of this file
 //   to get the right specialization of Concurrent_Stack
 //   and to achieve the default arguments consistently.
 
@@ -139,6 +152,9 @@ namespace BA_Concurrency {
         }
 
         // push function with classic CAS loop
+        //   1. Create a new node.
+        //   2. Set the next pointer of the new node to the current head.
+        //   3. Apply CAS on the head: CAS(new_node->head, new_node)
         template <typename U = T>
         void push(U&& data) {
             Node<T>* new_head = traits::allocate(_allocator, 1);
@@ -153,11 +169,12 @@ namespace BA_Concurrency {
         }
 
         // pop function:
-        //   CAS the head to the next while being protected by a hazard ptr,
-        //   extract the data from the popped head,
-        //   clear the hazard ptr,
-        //   add the popped head to the reclaim list,
-        //   return the data.
+        //   1. Protect the head node by a hazard pointer
+        //   2. Apply CAS on the head: CAS(head, head->next)
+        //   3. Move the data out from the old head node
+        //   4. Clear the hazard pointer
+        //   5. Add the old head to the reclaim list
+        //   6. Return the data
         std::optional<T> pop() {
             // CAS the head to the next while being protected by a hazard ptr
             _HPO hazard_ptr_owner;
@@ -212,6 +229,17 @@ namespace BA_Concurrency {
         Allocator<Node<T>>,
         std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Memory_Reclaimers::Hazard_Ptr)>,
         std::integral_constant<std::size_t, Hazard_Ptr_Record_Count>>;
+
+    // As explained in CAUTION-1 of the header documentation
+    // SPMC confiuration is same as MPMC
+    template <
+        typename T,
+        template <typename> typename Allocator = std::allocator,
+        std::size_t Hazard_Ptr_Record_Count = HAZARD_PTR_RECORD_COUNT__DEFAULT>
+    using stack_LF_linked_hazard_SPMC = stack_LF_linked_hazard_MPMC<
+        T,
+        Allocator,
+        Hazard_Ptr_Record_Count>;
 } // namespace BA_Concurrency
 
 #endif // CONCURRENT_STACK_LF_LINKED_HAZARD_MPMC_HPP
