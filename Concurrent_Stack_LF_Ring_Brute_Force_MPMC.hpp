@@ -12,7 +12,8 @@
 // - T must be noexcept-movable.
 //
 // Semantics:
-//   Atomic slot states where PT and CT stand for producer and consumer threads respectively: 
+//   Each slot acts like a finite state machine (FSM)
+//   with the following states (PT and CT stand for producer and consumer respectively): 
 //     SPP: State-Producer-Progress: PT owns the slot and is operating on it
 //     SPW: State-Producer-Waiting : PT shares the slot ownership with a CT and waiting for the CT's notify
 //     SPD: State-Producer-Done    : PT released the slot ownership after storing the data
@@ -189,7 +190,7 @@ namespace BA_Concurrency {
         // Loops the slots for busy push operation
         //
         // Operation steps:
-        //   Step 1: double CAS loop: while(!CAS(SCD, SPP) && !CAS(SCP, SPW)) _top.fetch_add(1)
+        //   Step 1: double-CAS-loop: while(!CAS(SCD, SPP) && !CAS(SCP, SPW)) _top.fetch_add(1)
         //   Step 2: IF Step 1 results with SPW -> slot->_state.wait() (to be notified for SCR)
         //   Step 3: IF Step 1 results with SPW -> CAS loop: while(!(SCR, SPP))
         //   Step 4: store the input data into the slot
@@ -271,7 +272,7 @@ namespace BA_Concurrency {
         // Loops the slots for busy emplace operation
         //
         // Operation steps:
-        //   Step 1: double CAS loop: while(!CAS(SCD, SPP) && !CAS(SCP, SPW)) _top.fetch_add(1)
+        //   Step 1: double-CAS-loop: while(!CAS(SCD, SPP) && !CAS(SCP, SPW)) _top.fetch_add(1)
         //   Step 2: IF Step 1 results with SPW -> slot->_state.wait() (to be notified for SCR)
         //   Step 3: IF Step 1 results with SPW -> CAS loop: while(!(SCR, SPP))
         //   Step 4: inplace construct the object in the slot
@@ -353,7 +354,7 @@ namespace BA_Concurrency {
         // Loops the slots for busy pop operation
         //
         // Operation steps:
-        //   Step 1: double CAS loop: while(!CAS(SPD, SCP) && !CAS(SPP, SCW)) _top.fetch_add(1)
+        //   Step 1: double-CAS-loop: while(!CAS(SPD, SCP) && !CAS(SPP, SCW)) _top.fetch_add(1)
         //   Step 2: IF Step 1 results with SCW -> slot->_state.wait() (to be notified for SPR)
         //   Step 3: IF Step 1 results with SCW -> CAS loop: while(!(SPR, SCP))
         //   Step 4: pop the value from the slot

@@ -1,7 +1,7 @@
-// Concurrent_Stack_LF_Ring_Brute_Force_MPMC.hpp
+// Concurrent_Stack_LF_Ring_Brute_Force_SPMC.hpp
 //
 // Description:
-//   The brute force solution for the lock-free/ring/MPMC stack problem:
+//   The brute force solution for the lock-free/ring/SPMC stack problem:
 //     Synchronize the top of the static ring buffer 
 //       which is shared between producer and consumer threads.
 //     Define an atomic state per buffer slot
@@ -12,71 +12,18 @@
 // - T must be noexcept-movable.
 //
 // Semantics:
-//   Atomic slot states where PT and CT stand for producer and consumer threads respectively: 
-//     SPP: State-Producer-Progress: PT owns the slot and is operating on it
-//     SPW: State-Producer-Waiting : PT shares the slot ownership with a CT and waiting for the CT's notify
-//     SPD: State-Producer-Done    : PT released the slot ownership after storing the data
-//     SPR: State-Producer-Ready   : PT released the slot ownership to the waiting CT (notify CT) after storing the data
-//     SCP: State-Consumer-Progress: CT owns the slot and is operating on it
-//     SCW: State-Consumer-Waiting : CT shares the slot ownership with a PT and waiting for the PT's notify
-//     SCD: State-Consumer-Done    : CT released the slot ownership after popping the data
-//     SCR: State-Consumer-Ready   : CT released the slot ownership to the waiting PT (notify PT) after popping the data
-//
-//   push():
-//     Loops through the slot buffer to reserve a slot
-//     that has a suitable state for the operation:
-//       CONSUMER/DONE (SCD) or CONSUMER/PROGRESS (SCP).
-//     If the state is SCD (Case1), gets the ownership of the slot by CASing the state to:
-//       PRODUCER/PROGRESS (SPP)
-//     In Case1, writes the input data into the slot and publishes the data
-//     by CASing the state to PRODUCER/DONE (SPD).
-//     Otherwise (Case2), CASes the state of the slot to PRODUCER/WAITING (SPW).
-//     Notice that, now, both the consumer and producer share the slot ownership.
-//     This case simulates an exclusive shared ownership of a producer and a consumer
-//     against the other threads operating on the stack.
-//     From this point on, the operations on the slot are SPSC
-//     which enables us to use notify semantics.
-//     Waits until the consumer finishes its work and CASes the state to CONSUMER/READY (SCR):
-//       slot->state.wait(SCR)
-//     When finished its job, the consumer notifies the waiting producer by:
-//       slot->state.notify_one(SCR)
-//     When the state changes to SCR, the OS will wake up the producer.
-//     When so, owns the slot by CASing the state to SPP.
-//     Writes the input data into the slot and publishes the data
-//     by CASing the state to SPD.
-//   pop():
-//     Pop is fully symmetric with push.
-//     However, in order to describe the use of the state in more detail
-//     I will go over the steps.
-//
-//     Loops through the slot buffer to reserve a slot
-//     that has a suitable state for the operation: SPD or SPP.
-//     If the state is SPD (Case1), gets the ownership of the slot by CASing the state to SCP.
-//     In Case1, writes the input data into the slot and publishes the data
-//     by CASing the state to SCD.
-//     Otherwise (Case2), CASes the state of the slot to SCW.
-//     Here, the SPSC window starts which enables us to use notify semantics.
-//     Waits until the producer finishes its work and CASes the state to SPR:
-//       slot->state.wait(SPR)
-//     When finished its job, the producer notifies the waiting consumer by:
-//       slot->state.notify_one(SPR)
-//     When the state changes to SPR, the OS will wake up the producer.
-//     When so, owns the slot by CASing the state to SCP.
-//     Pops the data from the slot and CASes the state to SCD.
-//
-//   Try configurations (try_push and try_pop):
-//     Producers and consumers need to loop through the slot buffer to reserve a slot
-//     that has a suitable state for the operation.
-//     In try configuration, the threads do not loop but
-//     tries to execute the operation immediately on the slot pointed by the top counnter.
-//     The operation is performed only if the top slot has a suitable state for the operation.
-//
-//   Example state transitions for a slot:
-//     SCD->SPP->SPD->SCP->SCD:
-//       no interference by counterpart threads while this thread is in progress (i.e. SPP and SCP)
-//     SCD->SPP->SCW->SPR->SCP->SPW->SCR->SPP:
-//       a counterpart thread interferes and starts waiting
-//       during this thread is in progress (i.e. SPP and SCP)
+//   See the documentation of Concurrent_Stack_LF_Ring_Brute_Force_MPMC.hpp
+//   for the general design of the stack.
+//   
+//   
+//   
+//   
+//   
+//   
+//   
+//   
+//   
+//   
 //
 // Progress:
 //   Lock-free:
@@ -94,7 +41,7 @@
 //   to acquire data after observing the state transitions.
 //
 // CAUTION:
-//   This is a simple conceptual model for a lock-free/ring-buffer/MPMC stack problem
+//   This is a simple conceptual model for a lock-free/ring-buffer/SPMC stack problem
 //   but actually not fully lock-free under heavy contention (i.e. obstruction-free)
 //   as the single atomic top synchronization allows
 //   each thread to execute only in isolation.
@@ -110,16 +57,16 @@
 //     capacity = 8 * N where N is the number of the threads
 //
 // CAUTION:
-//   use stack_LF_ring_brute_force_MPMC alias at the end of this file
+//   use stack_LF_ring_brute_force_SPMC alias at the end of this file
 //   to get the right specialization of Concurrent_Stack
 //   and to achieve the default arguments consistently.
 //
 // CAUTION:
-//   See Concurrent_Stack_LF_Ring_Ticket_MPMC for ticket-based version
+//   See Concurrent_Stack_LF_Ring_Ticket_SPMC for ticket-based version
 //   which guarantees lock-free execution regardless of the contention.
 
-#ifndef CONCURRENT_STACK_LF_RING_BRUTE_FORCE_MPMC_HPP
-#define CONCURRENT_STACK_LF_RING_BRUTE_FORCE_MPMC_HPP
+#ifndef CONCURRENT_STACK_LF_RING_BRUTE_FORCE_SPMC_HPP
+#define CONCURRENT_STACK_LF_RING_BRUTE_FORCE_SPMC_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -148,7 +95,7 @@ namespace BA_Concurrency {
     //   SCD->SPP->SPD->SCP->SCD
     //   SCD->SPP->SCW->SPR->SCP->SPW->SCR->SPP
     
-    // use stack_LF_ring_brute_force_MPMC alias at the end of this file
+    // use stack_LF_ring_brute_force_SPMC alias at the end of this file
     // to get the right specialization of Concurrent_Stack
     // and to achieve the default arguments consistently.
     template <
@@ -160,7 +107,7 @@ namespace BA_Concurrency {
     class Concurrent_Stack<
         true,
         Enum_Structure_Types::Static_Ring_Buffer,
-        Enum_Concurrency_Models::MPMC,
+        Enum_Concurrency_Models::SPMC,
         T,
         std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Brute_Force)>,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>
@@ -189,13 +136,20 @@ namespace BA_Concurrency {
         // Loops the slots for busy push operation
         //
         // Operation steps:
-        //   Step 1: double CAS loop: while(!CAS(SCD, SPP) && !CAS(SCP, SPW)) _top.fetch_add(1)
-        //   Step 2: IF Step 1 results with SPW -> slot->_state.wait() (to be notified for SCR)
-        //   Step 3: IF Step 1 results with SPW -> CAS loop: while(!(SCR, SPP))
+        //   Step 1: double-CAS-loop: while(!CAS(SCD, SPP))
         //   Step 4: store the input data into the slot
         //   Step 5: CAS(SPP, SPD)
         //   Step 6: If Step 5 fails -> CAS(SCW, SPR)
         //   Step 7: Notify the waiting consumer for SCR
+        //
+        // MPMC/SPMC comparison:
+        //   SPW and SCR are useless now as being single producer
+        //   Single SPMC implies:
+        //     short-running producer/long-running-consumer
+        //
+        //   Step 1: remove fetch_add: single producer just needs to wait for the top to be ready
+        //   Step 1: Convert double-CAS-loop to single-CAS-loop: no need to wait/notify for SCP as single producer
+        //   Step 1: CAS_strong -> CAS_weak: no operation is performed within the double-CAS-loop
         template <typename U = T>
         void push(U&& data) noexcept {
             std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
@@ -203,45 +157,12 @@ namespace BA_Concurrency {
 
             // Step 1
             std::uint8_t expected_state_1 = Slot_States::SCD;
-            std::uint8_t expected_state_2 = Slot_States::SCP;
-            bool CAS1{};
-            bool CAS2{};
-            while (!CAS1 && !CAS2) {
-                CAS1 = slot->_state.compare_exchange_strong(
+            while (
+                slot->_state.compare_exchange_strong(
                     expected_state_1,
                     Slot_States::SPP,
                     std::memory_order_acq_rel,
-                    std::memory_order_relaxed);
-                CAS2 = true;
-                if (!CAS1) {
-                    CAS2 = slot->_state.compare_exchange_strong(
-                        expected_state_2,
-                        Slot_States::SPW,
-                        std::memory_order_acq_rel,
-                        std::memory_order_relaxed);
-                }
-                if (!CAS1 && !CAS2) {
-                    top = (_top.fetch_add(1, std::memory_order_acq_rel) + 1) & _MASK;
-                    slot = &_slots[top];
-                    expected_state_1 = Slot_States::SCD;
-                    expected_state_2 = Slot_States::SCP;
-                }
-            };
-
-            if (!CAS1 && CAS2) {
-                // Step 2
-                std::uint8_t expected_state_3 = Slot_States::SCR;
-                slot->_state.wait(expected_state_3, std::memory_order_acquire);
-
-                // Step 3
-                std::uint8_t expected_state_4 = Slot_States::SCR;
-                while (
-                    !slot->_state.compare_exchange_weak(
-                        expected_state_4,
-                        Slot_States::SPP,
-                        std::memory_order_acq_rel,
-                        std::memory_order_relaxed)) expected_state_4 = Slot_States::SCR;
-            }
+                    std::memory_order_relaxed)) expected_state_1 = Slot_States::SCD;
 
             // Step 4
             slot->_data = std::forward<U>(data);
@@ -271,13 +192,17 @@ namespace BA_Concurrency {
         // Loops the slots for busy emplace operation
         //
         // Operation steps:
-        //   Step 1: double CAS loop: while(!CAS(SCD, SPP) && !CAS(SCP, SPW)) _top.fetch_add(1)
+        //   Step 1: double-CAS-loop: while(!CAS(SCD, SPP) && !CAS(SCP, SPW))
         //   Step 2: IF Step 1 results with SPW -> slot->_state.wait() (to be notified for SCR)
         //   Step 3: IF Step 1 results with SPW -> CAS loop: while(!(SCR, SPP))
         //   Step 4: inplace construct the object in the slot
         //   Step 5: CAS(SPP, SPD)
         //   Step 6: If Step 5 fails -> CAS(SCW, SPR)
         //   Step 7: Notify the waiting consumer for SCR
+        //
+        // MPMC/SPMC comparison:
+        //   Step 1: remove fetch_add: single producer just needs to wait for the top to be ready
+        //   Step 1: CAS_strong -> CAS_weak: no operation is performed within the double-CAS-loop
         template <typename... Args>
         void emplace(Args&&... args) noexcept {
             std::uint64_t top = _top.load(std::memory_order_acquire) & _MASK;
@@ -289,24 +214,18 @@ namespace BA_Concurrency {
             bool CAS1{};
             bool CAS2{};
             while (!CAS1 && !CAS2) {
-                CAS1 = slot->_state.compare_exchange_strong(
+                CAS1 = slot->_state.compare_exchange_weak(
                     expected_state_1,
                     Slot_States::SPP,
                     std::memory_order_acq_rel,
                     std::memory_order_relaxed);
                 CAS2 = true;
                 if (!CAS1) {
-                    CAS2 = slot->_state.compare_exchange_strong(
+                    CAS2 = slot->_state.compare_exchange_weak(
                         expected_state_2,
                         Slot_States::SPW,
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed);
-                }
-                if (!CAS1 && !CAS2) {
-                    top = (_top.fetch_add(1, std::memory_order_acq_rel) + 1) & _MASK;
-                    slot = &_slots[top];
-                    expected_state_1 = Slot_States::SCD;
-                    expected_state_2 = Slot_States::SCP;
                 }
             };
 
@@ -353,7 +272,7 @@ namespace BA_Concurrency {
         // Loops the slots for busy pop operation
         //
         // Operation steps:
-        //   Step 1: double CAS loop: while(!CAS(SPD, SCP) && !CAS(SPP, SCW)) _top.fetch_add(1)
+        //   Step 1: double-CAS-loop: while(!CAS(SPD, SCP) && !CAS(SPP, SCW)) _top.fetch_add(1)
         //   Step 2: IF Step 1 results with SCW -> slot->_state.wait() (to be notified for SPR)
         //   Step 3: IF Step 1 results with SCW -> CAS loop: while(!(SPR, SCP))
         //   Step 4: pop the value from the slot
@@ -588,13 +507,13 @@ namespace BA_Concurrency {
     template <
         typename T,
         unsigned char Capacity_As_Pow2>
-    using stack_LF_ring_brute_force_MPMC = Concurrent_Stack<
+    using stack_LF_ring_brute_force_SPMC = Concurrent_Stack<
         true,
         Enum_Structure_Types::Static_Ring_Buffer,
-        Enum_Concurrency_Models::MPMC,
+        Enum_Concurrency_Models::SPMC,
         T,
         std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Brute_Force)>,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>;
 } // namespace BA_Concurrency
 
-#endif // CONCURRENT_STACK_LF_RING_BRUTE_FORCE_MPMC_HPP
+#endif // CONCURRENT_STACK_LF_RING_BRUTE_FORCE_SPMC_HPP
