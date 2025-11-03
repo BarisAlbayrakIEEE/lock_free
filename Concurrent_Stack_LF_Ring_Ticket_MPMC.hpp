@@ -162,7 +162,7 @@ namespace BA_Concurrency {
             while (slot._expected_ticket.load(std::memory_order_acquire) != top_ticket);
 
             // construct and publish
-            ::new (slot.to_ptr()) T(std::forward<U>(data));
+            ::new (slot.to_ptr()) U(std::forward<U>(data));
             slot._expected_ticket.store(top_ticket + 1, std::memory_order_release);
         }
 
@@ -234,7 +234,7 @@ namespace BA_Concurrency {
             if (slot._expected_ticket.load(std::memory_order_acquire) != top_ticket) return false;
 
             // construct and publish
-            ::new (slot.to_ptr()) T(std::forward<U>(data));
+            ::new (slot.to_ptr()) U(std::forward<U>(data));
             slot._expected_ticket.store(top_ticket + 1, std::memory_order_release);
             return true;
         }
