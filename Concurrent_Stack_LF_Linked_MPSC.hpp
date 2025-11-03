@@ -133,7 +133,7 @@ namespace BA_Concurrency {
 
             // Apply CAS on the head: CAS(head, head->next)
             while(
-                old_head,
+                old_head &&
                 !_head.compare_exchange_weak(
                     old_head,
                     old_head->_next,
@@ -168,7 +168,7 @@ namespace BA_Concurrency {
         Allocator<Node<T>>>;
 
     // As explained in CAUTION-1 of the header documentation
-    // SPMC confiuration is same as MPSC
+    // SPMC configuration is same as MPSC
     template <
         typename T,
         template <typename> typename Allocator = std::allocator>
