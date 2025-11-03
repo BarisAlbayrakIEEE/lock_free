@@ -221,7 +221,7 @@ namespace BA_Concurrency {
                         std::memory_order_relaxed);
                 }
                 if (!CAS1 && !CAS2) {
-                    top = _top.fetch_add(1, std::memory_order_acq_rel) & _MASK;
+                    top = (_top.fetch_add(1, std::memory_order_acq_rel) + 1) & _MASK;
                     slot = &_slots[top];
                     expected_state_1 = Slot_States::SCD;
                     expected_state_2 = Slot_States::SCP;
@@ -303,7 +303,7 @@ namespace BA_Concurrency {
                         std::memory_order_relaxed);
                 }
                 if (!CAS1 && !CAS2) {
-                    top = _top.fetch_add(1, std::memory_order_acq_rel) & _MASK;
+                    top = (_top.fetch_add(1, std::memory_order_acq_rel) + 1) & _MASK;
                     slot = &_slots[top];
                     expected_state_1 = Slot_States::SCD;
                     expected_state_2 = Slot_States::SCP;
@@ -385,12 +385,13 @@ namespace BA_Concurrency {
                         std::memory_order_relaxed);
                 }
                 if (!CAS1 && !CAS2) {
-                    _top.compare_exchange_strong(
-                        top,
-                        top - 1,
-                        std::memory_order_acq_rel,
-                        std::memory_order_relaxed);
-                    top &= _MASK;
+                    while (
+                        !_top.compare_exchange_weak(
+                            top,
+                            top - 1,
+                            std::memory_order_acq_rel,
+                            std::memory_order_relaxed));
+                    top = (top - 1) & _MASK;
                     slot = &_slots[top];
                     expected_state_1 = Slot_States::SPD;
                     expected_state_2 = Slot_States::SPP;
