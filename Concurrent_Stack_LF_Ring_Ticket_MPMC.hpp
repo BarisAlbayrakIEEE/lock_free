@@ -83,13 +83,9 @@
 #include <optional>
 #include "Concurrent_Stack.hpp"
 #include "enum_ring_designs.hpp"
+#include "aux_type_traits.hpp"
 
 namespace BA_Concurrency {
-    template <unsigned char power>
-    struct pow2_size_t {
-        static constexpr std::size_t value = std::size_t(1) << power;
-    };
-    
     // use stack_LF_ring_ticket_MPMC alias at the end of this file
     // to get the right specialization of Concurrent_Stack
     // and to achieve the default arguments consistently.
@@ -115,7 +111,7 @@ namespace BA_Concurrency {
         };
 
         // mask to modulo the top_ticket by capacity
-        static constexpr std::size_t capacity = std::size_t(1) << Capacity_As_Pow2;
+        static constexpr std::size_t capacity = pow2_size<Capacity_As_Pow2>;
         static constexpr std::size_t _MASK = capacity - 1;
 
         // _top is the next top_ticket to push.
