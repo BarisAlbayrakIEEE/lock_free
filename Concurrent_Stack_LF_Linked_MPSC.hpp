@@ -142,14 +142,11 @@ namespace BA_Concurrency {
             if (!old_head) return std::nullopt;
 
             // extract the data
-            std::optional<T> data{ std::nullopt };
-            if (old_head) {
-                // extract the data from the popped head
-                data = std::move(old_head->_data);
+            std::optional<T> data{ std::move(old_head->_data) };
             
-                // Delete the old head
-                delete old_head;
-            }
+            // Delete the old head
+            traits::destroy(_allocator, old_head);
+            traits::deallocate(_allocator, old_head, 1);
 
             // return the data
             return data;
