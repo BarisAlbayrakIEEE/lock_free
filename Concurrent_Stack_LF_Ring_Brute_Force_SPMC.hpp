@@ -1,7 +1,7 @@
-// Concurrent_Stack_LF_Ring_Brute_Force_MPMC.hpp
+// Concurrent_Stack_LF_Ring_Brute_Force_SPMC.hpp
 //
 // Description:
-//   The brute force solution for the lock-free/ring/MPMC stack problem:
+//   The brute force solution for the lock-free/ring/SPMC stack problem:
 //     Synchronize the top of the static ring buffer 
 //       which is shared between producer and consumer threads.
 //     Define an atomic state per buffer slot
@@ -10,6 +10,30 @@
 // Requirements:
 // - capacity must be a power of two (for fast masking).
 // - T must be noexcept-movable.
+//
+// MPMC vs SPMC:
+//   1. The top offset incrementation:
+//      In case of multiple producers (i.e. MPMC or MPSC), multiple producers
+//      compete to acquire the next slot for writing.
+//      Hence, the top offset is incremented using an atomic operation (i.e. fetch_add).
+//      However, in case of single producer configurations (i.e. SPMC or SPSC),
+//      the top incrementation can safely be performed by a non-atomic operation (i.e. ++top).
+//      
+//      
+//      
+//      
+//      
+//      
+//      
+//      
+//      
+//     
+//   
+//   
+//   
+//   
+//   
+//
 //
 // Semantics:
 //   Atomic slot states where PT and CT stand for producer and consumer threads respectively: 
@@ -93,7 +117,7 @@
 //   to acquire data after observing the state transitions.
 //
 // CAUTION:
-//   This is a simple conceptual model for a lock-free/ring-buffer/MPMC stack problem
+//   This is a simple conceptual model for a lock-free/ring-buffer/SPMC stack problem
 //   but actually not fully lock-free under heavy contention (i.e. obstruction-free)
 //   as the single atomic top synchronization allows
 //   each thread to execute only in isolation.
@@ -109,16 +133,16 @@
 //     capacity = 8 * N where N is the number of the threads
 //
 // CAUTION:
-//   use stack_LF_ring_brute_force_MPMC alias at the end of this file
+//   use stack_LF_ring_brute_force_SPMC alias at the end of this file
 //   to get the right specialization of Concurrent_Stack
 //   and to achieve the default arguments consistently.
 //
 // CAUTION:
-//   See Concurrent_Stack_LF_Ring_Ticket_MPMC for ticket-based version
+//   See Concurrent_Stack_LF_Ring_Ticket_SPMC for ticket-based version
 //   which guarantees lock-free execution regardless of the contention.
 
-#ifndef CONCURRENT_STACK_LF_RING_BRUTE_FORCE_MPMC_HPP
-#define CONCURRENT_STACK_LF_RING_BRUTE_FORCE_MPMC_HPP
+#ifndef CONCURRENT_STACK_LF_RING_BRUTE_FORCE_SPMC_HPP
+#define CONCURRENT_STACK_LF_RING_BRUTE_FORCE_SPMC_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -151,7 +175,7 @@ namespace BA_Concurrency {
         static constexpr std::size_t value = std::size_t(1) << power;
     };
     
-    // use stack_LF_ring_brute_force_MPMC alias at the end of this file
+    // use stack_LF_ring_brute_force_SPMC alias at the end of this file
     // to get the right specialization of Concurrent_Stack
     // and to achieve the default arguments consistently.
     template <
@@ -163,7 +187,7 @@ namespace BA_Concurrency {
     class Concurrent_Stack<
         true,
         Enum_Structure_Types::Static_Ring_Buffer,
-        Enum_Concurrency_Models::MPMC,
+        Enum_Concurrency_Models::SPMC,
         T,
         std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Brute_Force)>,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>
@@ -615,13 +639,13 @@ namespace BA_Concurrency {
     template <
         typename T,
         unsigned char Capacity_As_Pow2>
-    using stack_LF_ring_brute_force_MPMC = Concurrent_Stack<
+    using stack_LF_ring_brute_force_SPMC = Concurrent_Stack<
         true,
         Enum_Structure_Types::Static_Ring_Buffer,
-        Enum_Concurrency_Models::MPMC,
+        Enum_Concurrency_Models::SPMC,
         T,
         std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Brute_Force)>,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>;
 } // namespace BA_Concurrency
 
-#endif // CONCURRENT_STACK_LF_RING_BRUTE_FORCE_MPMC_HPP
+#endif // CONCURRENT_STACK_LF_RING_BRUTE_FORCE_SPMC_HPP

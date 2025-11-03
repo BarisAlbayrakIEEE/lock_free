@@ -61,6 +61,15 @@
 //   to get the right specialization of Concurrent_Stack
 //   and to achieve the default arguments consistently.
 //
+// CAUTION:
+//   Threads may spin indefinitely if a counterpart thread fails mid-operation,
+//   as by design, each operation (e.g. producer)
+//   works on a unique slot and
+//   waits for the counterpart (e.g. consumer)
+//   to finish its job (e.g. pop the value and adjust the ticket to imply EMPTY state).
+//   So, the producer will fall in an infinite loop, if the counter consumer fails/stalls.
+//   Or, the consumer will fall in an infinite loop, if the counter producer fails/stalls.
+//
 // See Concurrent_Stack_LF_Ring_Ticket_MPMC for ticket-based version
 // which guarantees lock-free execution regardless of the contention.
 
@@ -101,6 +110,7 @@ namespace BA_Concurrency {
         struct alignas(64) Slot {
             std::atomic<std::uint64_t> _expected_ticket; // will be initialized during the stack's constructor
             alignas(T) unsigned char _data[sizeof(T)];
+            char pad[64 - sizeof(_expected_ticket) - sizeof(_data) % 64]; // explicit alignment to ensure 64
             T* to_ptr() noexcept { return std::launder(reinterpret_cast<T*>(_data)); }
         };
 
@@ -249,12 +259,21 @@ namespace BA_Concurrency {
         // non-blocking (no wait) pop
         std::optional<T> try_pop() noexcept {
             // reserve a unique ticket for the top
-            const std::uint64_t top_ticket = _top.fetch_add(1, std::memory_order_acq_rel);
+            const std::uint64_t old_top = _top.load(1, std::memory_order_acquire);
+            if (
+                !_top.compare_exchange_strong(
+                    old_top,
+                    old_top - 1,
+                    std::memory_order_acq_rel,
+                    std::memory_order_acquire)) return std::nullopt;
+
+            const std::uint64_t top_ticket = old_top - 1;
             const std::size_t slot_index = static_cast<std::size_t>(top_ticket & _MASK);
             Slot& slot = _slots[slot_index];
 
             // try if the slot is currently empty (slot._expected_ticket == top_ticket + 1) for this top_ticket.
-            if (slot._expected_ticket.load(std::memory_order_acquire) != top_ticket + 1) return std::nullopt;
+            if (slot._expected_ticket.load(std::memory_order_acquire) != top_ticket + 1)
+                return std::nullopt;
 
             // construct and publish
             // Move the data and destroy in place
