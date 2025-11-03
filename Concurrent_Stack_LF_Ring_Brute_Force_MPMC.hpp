@@ -32,7 +32,7 @@
 //     by CASing the state to PRODUCER/DONE (SPD).
 //     Otherwise (Case2), CASes the state of the slot to PRODUCER/WAITING (SPW).
 //     Notice that, now, both the consumer and producer share the slot ownership.
-//     This case simulates an exclusive shared ownership of a producer and a counter
+//     This case simulates an exclusive shared ownership of a producer and a consumer
 //     against the other threads operating on the stack.
 //     From this point on, the operations on the slot are SPSC
 //     which enables us to use notify semantics.
@@ -64,7 +64,7 @@
 //     When so, owns the slot by CASing the state to SCP.
 //     Pops the data from the slot and CASes the state to SCD.
 //
-//   Try configurations (tyr_push and try_pop):
+//   Try configurations (try_push and try_pop):
 //     Producers and consumers need to loop through the slot buffer to reserve a slot
 //     that has a suitable state for the operation.
 //     In try configuration, the threads do not loop but
@@ -73,9 +73,10 @@
 //
 //   Example state transitions for a slot:
 //     SCD->SPP->SPD->SCP->SCD:
-//       no interference by counter threads while this thread is in progress (i.e. SPP and SCP)
+//       no interference by counterpart threads while this thread is in progress (i.e. SPP and SCP)
 //     SCD->SPP->SCW->SPR->SCP->SPW->SCR->SPP:
-//       a counter thread interferes and starts waiting during this thread is in progress (i.e. SPP and SCP)
+//       a counterpart thread interferes and starts waiting
+//       during this thread is in progress (i.e. SPP and SCP)
 //
 // Progress:
 //   Lock-free:
@@ -189,7 +190,7 @@ namespace BA_Concurrency {
         //
         // Operation steps:
         //   Step 1: double CAS loop: while(!CAS(SCD, SPP) && !CAS(SCP, SPW)) _top.fetch_add(1)
-        //   Step 2: IF Step 1 results with SPW -> slote->_state.wait() (to be notified for SCR)
+        //   Step 2: IF Step 1 results with SPW -> slot->_state.wait() (to be notified for SCR)
         //   Step 3: IF Step 1 results with SPW -> CAS loop: while(!(SCR, SPP))
         //   Step 4: store the input data into the slot
         //   Step 5: CAS(SPP, SPD)
@@ -201,55 +202,45 @@ namespace BA_Concurrency {
             Slot *slot = &_slots[top];
 
             // Step 1
-            while (true) {
-                std::uint8_t expected_state_1 = Slot_States::SCD;
-                auto CAS1 = slot->_state.compare_exchange_strong(
+            std::uint8_t expected_state_1 = Slot_States::SCD;
+            std::uint8_t expected_state_2 = Slot_States::SCP;
+            bool CAS1{};
+            bool CAS2{};
+            while (!CAS1 && !CAS2) {
+                CAS1 = slot->_state.compare_exchange_strong(
                     expected_state_1,
                     Slot_States::SPP,
                     std::memory_order_acq_rel,
                     std::memory_order_relaxed);
-                std::uint8_t expected_state_2 = Slot_States::SCP;
-                bool CAS2{};
-                if (!CAS1)
+                CAS2 = true;
+                if (!CAS1) {
                     CAS2 = slot->_state.compare_exchange_strong(
                         expected_state_2,
                         Slot_States::SPW,
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed);
-                while (!CAS1 && !CAS2) {
+                }
+                if (!CAS1 && !CAS2) {
                     top = _top.fetch_add(1, std::memory_order_acq_rel) & _MASK;
                     slot = &_slots[top];
-
                     expected_state_1 = Slot_States::SCD;
-                    CAS1 = slot->_state.compare_exchange_strong(
-                        expected_state_1,
+                    expected_state_2 = Slot_States::SCP;
+                }
+            };
+
+            if (!CAS1 && CAS2) {
+                // Step 2
+                std::uint8_t expected_state_3 = Slot_States::SCR;
+                slot->_state.wait(expected_state_3, std::memory_order_acquire);
+
+                // Step 3
+                std::uint8_t expected_state_4 = Slot_States::SCR;
+                while (
+                    !slot->_state.compare_exchange_weak(
+                        expected_state_4,
                         Slot_States::SPP,
                         std::memory_order_acq_rel,
-                        std::memory_order_relaxed);
-                    if (!CAS1) {
-                        expected_state_2 = Slot_States::SCP;
-                        CAS2 = slot->_state.compare_exchange_strong(
-                            expected_state_2,
-                            Slot_States::SPW,
-                            std::memory_order_acq_rel,
-                            std::memory_order_relaxed);
-                    }
-                };
-
-                if (CAS2) {
-                    // Step 2
-                    slot->_state.wait(Slot_States::SCR, std::memory_order_acquire);
-
-                    // Step 3
-                    std::uint8_t expected_state_3 = Slot_States::SCR;
-                    while (
-                        !slot->_state.compare_exchange_weak(
-                            expected_state_3,
-                            Slot_States::SPP,
-                            std::memory_order_acq_rel,
-                            std::memory_order_relaxed)) expected_state_3 = Slot_States::SCR;
-                }
-                break;
+                        std::memory_order_relaxed)) expected_state_4 = Slot_States::SCR;
             }
 
             // Step 4
@@ -281,7 +272,7 @@ namespace BA_Concurrency {
         //
         // Operation steps:
         //   Step 1: double CAS loop: while(!CAS(SCD, SPP) && !CAS(SCP, SPW)) _top.fetch_add(1)
-        //   Step 2: IF Step 1 results with SPW -> slote->_state.wait() (to be notified for SCR)
+        //   Step 2: IF Step 1 results with SPW -> slot->_state.wait() (to be notified for SCR)
         //   Step 3: IF Step 1 results with SPW -> CAS loop: while(!(SCR, SPP))
         //   Step 4: inplace construct the object in the slot
         //   Step 5: CAS(SPP, SPD)
@@ -293,59 +284,49 @@ namespace BA_Concurrency {
             Slot *slot = &_slots[top];
 
             // Step 1
-            while (true) {
-                std::uint8_t expected_state_1 = Slot_States::SCD;
-                auto CAS1 = slot->_state.compare_exchange_strong(
+            std::uint8_t expected_state_1 = Slot_States::SCD;
+            std::uint8_t expected_state_2 = Slot_States::SCP;
+            bool CAS1{};
+            bool CAS2{};
+            while (!CAS1 && !CAS2) {
+                CAS1 = slot->_state.compare_exchange_strong(
                     expected_state_1,
                     Slot_States::SPP,
                     std::memory_order_acq_rel,
                     std::memory_order_relaxed);
-                std::uint8_t expected_state_2 = Slot_States::SCP;
-                bool CAS2{};
-                if (!CAS1)
+                CAS2 = true;
+                if (!CAS1) {
                     CAS2 = slot->_state.compare_exchange_strong(
                         expected_state_2,
                         Slot_States::SPW,
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed);
-                while (!CAS1 && !CAS2) {
-                    top = _top.fetch_add(1, std::memory_order_relaxed) & _MASK; // ordering is fixed by state flag
+                }
+                if (!CAS1 && !CAS2) {
+                    top = _top.fetch_add(1, std::memory_order_acq_rel) & _MASK;
                     slot = &_slots[top];
-
                     expected_state_1 = Slot_States::SCD;
-                    CAS1 = slot->_state.compare_exchange_strong(
-                        expected_state_1,
+                    expected_state_2 = Slot_States::SCP;
+                }
+            };
+
+            if (!CAS1 && CAS2) {
+                // Step 2
+                std::uint8_t expected_state_3 = Slot_States::SCR;
+                slot->_state.wait(expected_state_3, std::memory_order_acquire);
+
+                // Step 3
+                std::uint8_t expected_state_4 = Slot_States::SCR;
+                while (
+                    !slot->_state.compare_exchange_weak(
+                        expected_state_4,
                         Slot_States::SPP,
                         std::memory_order_acq_rel,
-                        std::memory_order_relaxed);
-                    if (!CAS1) {
-                        expected_state_2 = Slot_States::SCP;
-                        CAS2 = slot->_state.compare_exchange_strong(
-                            expected_state_2,
-                            Slot_States::SPW,
-                            std::memory_order_acq_rel,
-                            std::memory_order_relaxed);
-                    }
-                };
-
-                if (CAS2) {
-                    // Step 2
-                    slot->_state.wait(Slot_States::SCR, std::memory_order_acquire);
-
-                    // Step 3
-                    std::uint8_t expected_state_3 = Slot_States::SCR;
-                    while (
-                        !slot->_state.compare_exchange_weak(
-                            expected_state_3,
-                            Slot_States::SPP,
-                            std::memory_order_acq_rel,
-                            std::memory_order_relaxed)) expected_state_3 = Slot_States::SCR;
-                }
-                break;
+                        std::memory_order_relaxed)) expected_state_4 = Slot_States::SCR;
             }
 
             // Step 4
-            slot->_data = T(std::forward<Args>(args)...);
+            ::new (&slot->_data) T(std::forward<Args>(args)...);
 
             // Step 5
             std::uint8_t expected_state = Slot_States::SPP;
@@ -373,7 +354,7 @@ namespace BA_Concurrency {
         //
         // Operation steps:
         //   Step 1: double CAS loop: while(!CAS(SPD, SCP) && !CAS(SPP, SCW)) _top.fetch_add(1)
-        //   Step 2: IF Step 1 results with SCW -> slote->_state.wait() (to be notified for SPR)
+        //   Step 2: IF Step 1 results with SCW -> slot->_state.wait() (to be notified for SPR)
         //   Step 3: IF Step 1 results with SCW -> CAS loop: while(!(SPR, SCP))
         //   Step 4: pop the value from the slot
         //   Step 5: CAS(SCP, SCD)
@@ -385,55 +366,50 @@ namespace BA_Concurrency {
             Slot *slot = &_slots[top];
 
             // Step 1
-            while (true) {
-                std::uint8_t expected_state_1 = Slot_States::SPD;
-                auto CAS1 = slot->_state.compare_exchange_strong(
+            std::uint8_t expected_state_1 = Slot_States::SPD;
+            std::uint8_t expected_state_2 = Slot_States::SPP;
+            bool CAS1{};
+            bool CAS2{};
+            while (!CAS1 && !CAS2) {
+                CAS1 = slot->_state.compare_exchange_strong(
                     expected_state_1,
                     Slot_States::SCP,
                     std::memory_order_acq_rel,
                     std::memory_order_relaxed);
-                std::uint8_t expected_state_2 = Slot_States::SPP;
-                bool CAS2{};
-                if (!CAS1)
+                CAS2 = true;
+                if (!CAS1) {
                     CAS2 = slot->_state.compare_exchange_strong(
                         expected_state_2,
                         Slot_States::SCW,
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed);
-                while (!CAS1 && !CAS2) {
-                    top = _top.fetch_add(1, std::memory_order_acq_rel) & _MASK;
-                    slot = &_slots[top];
-
-                    expected_state_1 = Slot_States::SPD;
-                    CAS1 = slot->_state.compare_exchange_strong(
-                        expected_state_1,
-                        Slot_States::SCP,
+                }
+                if (!CAS1 && !CAS2) {
+                    _top.compare_exchange_strong(
+                        top,
+                        top - 1,
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed);
-                    if (!CAS1) {
-                        expected_state_2 = Slot_States::SPP;
-                        CAS2 = slot->_state.compare_exchange_strong(
-                            expected_state_2,
-                            Slot_States::SCW,
-                            std::memory_order_acq_rel,
-                            std::memory_order_relaxed);
-                    }
-                };
-
-                if (CAS2) {
-                    // Step 2
-                    slot->_state.wait(Slot_States::SPR, std::memory_order_acquire);
-
-                    // Step 3
-                    std::uint8_t expected_state_3 = Slot_States::SPR;
-                    while (
-                        !slot->_state.compare_exchange_weak(
-                            expected_state_3,
-                            Slot_States::SCP,
-                            std::memory_order_acq_rel,
-                            std::memory_order_relaxed)) expected_state_3 = Slot_States::SPR;
+                    top &= _MASK;
+                    slot = &_slots[top];
+                    expected_state_1 = Slot_States::SPD;
+                    expected_state_2 = Slot_States::SPP;
                 }
-                break;
+            };
+
+            if (!CAS1 && CAS2) {
+                // Step 2
+                std::uint8_t expected_state_3 = Slot_States::SPR;
+                slot->_state.wait(expected_state_3, std::memory_order_acquire);
+
+                // Step 3
+                std::uint8_t expected_state_4 = Slot_States::SPR;
+                while (
+                    !slot->_state.compare_exchange_weak(
+                        expected_state_4,
+                        Slot_States::SCP,
+                        std::memory_order_acq_rel,
+                        std::memory_order_relaxed)) expected_state_4 = Slot_States::SPR;
             }
 
             // Step 4
