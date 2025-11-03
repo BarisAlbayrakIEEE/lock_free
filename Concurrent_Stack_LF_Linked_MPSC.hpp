@@ -5,7 +5,7 @@
 //     Single consumer terminates the need for the synchronization
 //     during the head node destruction.
 //     In other words, in case of a single consumer,
-//     the hazard pointers (or referrence counters) are not required.
+//     the hazard pointers (or reference counters) are not required.
 //
 // Requirements:
 // - T must be noexcept-movable.
