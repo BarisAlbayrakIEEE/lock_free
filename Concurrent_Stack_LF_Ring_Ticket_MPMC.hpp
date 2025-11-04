@@ -189,13 +189,13 @@ namespace BA_Concurrency {
             while (true) {
                 if (old_top == 0) return std::nullopt;
 
-                // Try to claim top_ticket old_top-1
+                // Try to claim top_ticket old_top - 1
                 if (_top.compare_exchange_strong(
                         old_top,
                         old_top - 1,
                         std::memory_order_acq_rel,
                         std::memory_order_acquire)) {
-                    // the top_ticket (old_top-1) is owned by this consumer
+                    // own the slot
                     const std::uint64_t top_ticket = old_top - 1;
                     const std::size_t slot_index = static_cast<std::size_t>(top_ticket & _MASK);
                     Slot& slot = _slots[slot_index];
