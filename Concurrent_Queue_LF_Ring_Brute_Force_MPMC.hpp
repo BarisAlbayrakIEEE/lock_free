@@ -142,15 +142,15 @@ namespace BA_Concurrency {
         };
 
         // the capacity of the buffer
-        static constexpr std::size_t capacity = pow2_size<Capacity_As_Pow2>;
+        static constexpr std::size_t _CAPACITY = pow2_size<Capacity_As_Pow2>;
         // mask to modulo the head/tail by capacity to achieve the buffer index
-        static constexpr std::size_t _MASK = capacity - 1;
+        static constexpr std::size_t _MASK = _CAPACITY - 1;
         // the atomic head
-        alignas(64) std::atomic<std::uint64_t> _head{ capacity };
+        alignas(64) std::atomic<std::uint64_t> _head{ _CAPACITY };
         // the atomic tail
         alignas(64) std::atomic<std::uint64_t> _tail{ 0 };
         // the buffer of slots
-        Slot _slots[capacity];
+        Slot _slots[_CAPACITY];
 
     public:
 
