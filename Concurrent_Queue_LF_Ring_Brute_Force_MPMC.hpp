@@ -161,14 +161,18 @@ namespace BA_Concurrency {
         // Loops the slots for busy push operation
         //
         // Operation steps:
-        //   1. Try to own the tail slot: CAS loop to increment it:
-        //      while(!_tail.CAS(tail, tail + 1,...) { tail = _tail.load(...); }
-        //   2. Sharing the ownership of the tail slot with a consumer: CAS loop to POP_DONE -> PUSH_PROGRESS:
-        //      _slots[tail]._state.CAS(POP_DONE, PUSH_PROGRESS,...);
+        //   1. Fetch increment the tail to get the ownership of the tail slot:
+        //      _tail.fetch_add(1,...);
+        //   2. Maybe sharing the ownership of the tail slot with a consumer: wait for the consumer:
+        //      while(!slot->_state.CAS(POP_DONE, PUSH_PROGRESS,...));
         //   3. The slot is owned now. push the data:
-        //      _slots[tail]._data = std::move(data);
+        //      slot->_data = std::move(data);
         //   4. Store the state as PUSH_DONE:
-        //      _slots[tail]._state.store(PUSH_DONE,...);
+        //      slot->_state.store(PUSH_DONE,...);
+        //
+        // Notes:
+        //   1. If there exists a single producer (SPMC or SPSC), the tail index
+        //      does not need to be an atomic.
         template <typename U = T>
         void push(U&& data) noexcept {
             // increment the tail
@@ -196,18 +200,22 @@ namespace BA_Concurrency {
         // Loops the slots for busy pop operation
         //
         // Operation steps:
-        //   1. Try to own the tail slot: CAS loop to decrement it:
-        //      while(!_tail.CAS(tail, tail - 1,...) { tail = _tail.load(...); }
-        //   2. Sharing the ownership of the [tail - 1] slot with a producer: CAS loop to PUSH_DONE -> POP_PROGRESS:
-        //      _slots[tail - 1]._state.CAS(PUSH_DONE, POP_PROGRESS,...);
+        //   1. CAS increment the head to get the ownership of the head slot (the queue maybe empty):
+        //      _head.CAS(head, head + 1,...);
+        //   2. Maybe sharing the ownership of the head slot with a producer: wait for the producer:
+        //      while(!slot->_state.CAS(PUSH_DONE, POP_PROGRESS,...));
         //   3. The slot is owned now. pop the data:
-        //      auto data = std::move(_slots[tail - 1]._data);
+        //      auto data = std::move(_slots[head]._data);
         //   4. Store the state as POP_DONE:
-        //      _slots[tail - 1]._state.store(POP_DONE,...);
+        //      slot->_state.store(POP_DONE,...);
         //   5. return the popped data:
         //      return data;
+        //
+        // Notes:
+        //   1. If there exists a single consumer (MPSC or SPSC), the head index
+        //      does not need to be an atomic.
         T pop() noexcept {
-            // wait while the queue is empty
+            // Step 1
             std::uint64_t head = _head.load(std::memory_order_acquire);
             std::uint64_t tail = _tail.load(std::memory_order_acquire);
             while(true) {
@@ -225,11 +233,10 @@ namespace BA_Concurrency {
                         std::memory_order_acq_rel,
                         std::memory_order_relaxed)) break;
             }
-
             // the slot is owned (or shared with a producer)
             Slot *slot = &_slots[head & _MASK];
 
-            // wait until the producer sharing the slot finishes working on the slot
+            // Step 2
             uint8_t expected_state = PUSH_DONE;
             while (
                 !_tail.compare_exchange_weak(
@@ -238,10 +245,10 @@ namespace BA_Concurrency {
                     std::memory_order_acq_rel,
                     std::memory_order_relaxed)) expected_state = PUSH_DONE;
 
-            // pop the data
+            // Step 3
             auto data = std::move(slot->_data);
 
-            // store slot state as DONE
+            // Step 4
             slot->_state.store(POP_DONE, std::memory_order_release);
 
             // Step 5
