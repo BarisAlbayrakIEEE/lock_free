@@ -1,4 +1,4 @@
-// Concurrent_Queue_LF_Ring_Ticket_MPMC.hpp
+// Concurrent_Queue_LF_Ring_MPMC.hpp
 //
 // Description:
 //   The ticket-based solution for the lock-free/ring/MPMC queue problem:
@@ -130,19 +130,19 @@
 //      pop(): Back-pressures when the queue is empty by spinning on its reserved slot.
 //   3. This optimizations for simple producer/consumer configurations
 //      can be found in the following files:
-//        queue_LF_ring_ticket_MPSC
-//        queue_LF_ring_ticket_SPMC
-//        queue_LF_ring_ticket_SPSC
+//        queue_LF_ring_MPSC
+//        queue_LF_ring_SPMC
+//        queue_LF_ring_SPSC
 //
 // Cautions:
-//   1. use queue_LF_ring_ticket_MPMC alias at the end of this file
+//   1. use queue_LF_ring_MPMC alias at the end of this file
 //      to get the right specialization of Concurrent_Queue
 //      and to achieve the default arguments consistently.
 //   2. Threads may spin indefinitely if a counterpart thread fails mid-operation,
 //      before setting the expected state accordingly.
 
-#ifndef CONCURRENT_QUEUE_LF_RING_TICKET_MPMC_HPP
-#define CONCURRENT_QUEUE_LF_RING_TICKET_MPMC_HPP
+#ifndef CONCURRENT_QUEUE_LF_RING_MPMC_HPP
+#define CONCURRENT_QUEUE_LF_RING_MPMC_HPP
 
 #include <atomic>
 #include <cstddef>
@@ -155,7 +155,7 @@
 #include "aux_type_traits.hpp"
 
 namespace BA_Concurrency {
-    // use queue_LF_ring_ticket_MPMC alias at the end of this file
+    // use queue_LF_ring_MPMC alias at the end of this file
     // to get the right specialization of Concurrent_Queue
     // and to achieve the default arguments consistently.
     template <
@@ -488,7 +488,7 @@ namespace BA_Concurrency {
     template <
         typename T,
         unsigned char Capacity_As_Pow2>
-    using queue_LF_ring_ticket_MPMC = Concurrent_Queue<
+    using queue_LF_ring_MPMC = Concurrent_Queue<
         true,
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::MPMC,
@@ -496,4 +496,4 @@ namespace BA_Concurrency {
         std::integral_constant<unsigned char, Capacity_As_Pow2>>;
 } // namespace BA_Concurrency
 
-#endif // CONCURRENT_QUEUE_LF_RING_TICKET_MPMC_HPP
+#endif // CONCURRENT_QUEUE_LF_RING_MPMC_HPP
