@@ -12,7 +12,7 @@
 //
 // Semantics:
 //   push():
-//     Follows the classical algorithm for the push:
+//     The classical push routine is applied:
 //       1. Create a new node.
 //       2. Set the next pointer of the new node to the current head.
 //       3. Apply CAS on the head: CAS(new_node->head, new_node)
@@ -23,25 +23,23 @@
 //       3. Delete the old head
 //       4. Return the data
 //
-// CAUTION-1:
-//   In case of a single producer (i.e. SPMC and SPSC),
-//   the competition between the single producer and the consumer(s) remain
-//   which means that the synchronization between the counterparts is still required.
-//   On the other hand, single consumer configuration is special
-//   and is explained in the CAUTION-2 of the main documentation of:
-//     Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp.
-//   As the single producer configuration has no effect on this design,
-//   I will use the same specialization for the following two configurations:
-//     MPSC and SPMC
-//   
-//   See the two aliases at the end:
-//     stack_LF_linked_MPSC
-//     stack_LF_linked_SPMC = stack_LF_linked_MPSC
-//
-// CAUTION-2:
-//   use stack_LF_Linked_MPSC and stack_LF_Linked_SPSC aliases at the end of this file
-//   to get the right specialization of Concurrent_Stack
-//   and to achieve the default arguments consistently.
+// Cautions:
+//   1. In case of a single producer (i.e. SPMC and SPSC),
+//      the competition between the single producer and the consumer(s) remain
+//      which means that the synchronization between the counterparts is still required.
+//      On the other hand, single consumer configuration is special
+//      and is explained in the 2nd caution of the main documentation of:
+//        Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp.
+//      As the single producer configuration has no effect on this design,
+//      I will use the same specialization for the following two configurations:
+//        MPSC and SPMC
+//      
+//      See the two aliases at the end:
+//        stack_LF_linked_MPSC
+//        stack_LF_linked_SPMC = stack_LF_linked_MPSC
+//   2. use stack_LF_Linked_MPSC and stack_LF_Linked_SPSC aliases at the end of this file
+//      to get the right specialization of Concurrent_Stack
+//      and to achieve the default arguments consistently.
 
 #ifndef CONCURRENT_STACK_LF_LINKED_MPSC_HPP
 #define CONCURRENT_STACK_LF_LINKED_MPSC_HPP

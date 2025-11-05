@@ -135,11 +135,11 @@
 //        queue_LF_ring_SPSC
 //
 // Cautions:
-//   1. use queue_LF_ring_MPMC alias at the end of this file
+//   1. Threads may spin indefinitely if a counterpart thread fails mid-operation,
+//      before setting the expected state accordingly.
+//   2. use queue_LF_ring_MPMC alias at the end of this file
 //      to get the right specialization of Concurrent_Queue
 //      and to achieve the default arguments consistently.
-//   2. Threads may spin indefinitely if a counterpart thread fails mid-operation,
-//      before setting the expected state accordingly.
 //
 // TODOs:
 //   1. The blocking operations (push and pop) back-pressures

@@ -30,40 +30,36 @@
 //
 // See the documentation of Hazard_Ptr.hpp for the details about the hazard pointers.
 //
-// CAUTION-1:
-//   In case of a single producer (i.e. SPMC and SPSC),
-//   the competition between the single producer and the consumer(s) remain
-//   which means that the synchronization between the counterparts is still required.
-//   On the other hand, single consumer configuration is special
-//   and is explained in the next caution.
-//   As the single producer configuration has no effect on this design,
-//   I will use the same specialization for the following two configurations:
-//     MPMC and SPMC
-//   
-//   See the two aliases at the end:
-//     stack_LF_linked_hazard_MPMC
-//     stack_LF_linked_hazard_SPMC = stack_LF_linked_hazard_MPMC
-//
-// CAUTION-2:
-//   The hazard pointers synchronize the memory reclamation
-//   (i.e. the race condition related to the head pointer destruction at the end of a pop).
-//   The race condition disappears when there exists a single consumer.
-//   Hence, the usage of hazard pointers is
-//   limited to the SPMC and MPMC configurations and
-//   the repository lacks headers for
-//   lock-free/linked/hazard solutions with SPSC and MPSC configurations.
-//   For these two configurations refer to lock-free/linked solutions instead.
-//   Together with CAUTION-1,
-//   the list of headers for lock-free/linked solutions are:
-//     Concurrent_Stack_LF_Linked_MPSC.hpp // applicable to Concurrent_Stack_LF_Linked_SPSC as well
-//     Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp // applicable to Concurrent_Stack_LF_Linked_SPMC as well
-//     Concurrent_Stack_LF_Linked_XX_MPMC.hpp (e.g. XX = reference_counter)
-//     Concurrent_Stack_LF_Linked_XX_SPMC.hpp (e.g. XX = reference_counter)
-//
-// CAUTION-3:
-//   use stack_LF_Linked_MPMC and stack_LF_Linked_SPMC aliases at the end of this file
-//   to get the right specialization of Concurrent_Stack
-//   and to achieve the default arguments consistently.
+// Cautions:
+//   1. In case of a single producer (i.e. SPMC and SPSC),
+//      the competition between the single producer and the consumer(s) remain
+//      which means that the synchronization between the counterparts is still required.
+//      On the other hand, single consumer configuration is special
+//      and is explained in the next caution.
+//      As the single producer configuration has no effect on this design,
+//      I will use the same specialization for the following two configurations:
+//        MPMC and SPMC
+//      
+//      See the two aliases at the end:
+//        stack_LF_linked_hazard_MPMC
+//        stack_LF_linked_hazard_SPMC = stack_LF_linked_hazard_MPMC
+//   2. The hazard pointers synchronize the memory reclamation
+//      (i.e. the race condition related to the head pointer destruction at the end of a pop).
+//      The race condition disappears when there exists a single consumer.
+//      Hence, the usage of hazard pointers is
+//      limited to the SPMC and MPMC configurations and
+//      the repository lacks headers for
+//      lock-free/linked/hazard solutions with SPSC and MPSC configurations.
+//      For these two configurations refer to lock-free/linked solutions instead.
+//      Together with Caution 1,
+//      the list of headers for lock-free/linked solutions are:
+//        Concurrent_Stack_LF_Linked_MPSC.hpp // applicable to Concurrent_Stack_LF_Linked_SPSC as well
+//        Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp // applicable to Concurrent_Stack_LF_Linked_SPMC as well
+//        Concurrent_Stack_LF_Linked_XX_MPMC.hpp (e.g. XX = reference_counter)
+//        Concurrent_Stack_LF_Linked_XX_SPMC.hpp (e.g. XX = reference_counter)
+//   3. use stack_LF_Linked_MPMC and stack_LF_Linked_SPMC aliases at the end of this file
+//      to get the right specialization of Concurrent_Stack
+//      and to achieve the default arguments consistently.
 
 #ifndef CONCURRENT_STACK_LF_LINKED_HAZARD_MPMC_HPP
 #define CONCURRENT_STACK_LF_LINKED_HAZARD_MPMC_HPP
