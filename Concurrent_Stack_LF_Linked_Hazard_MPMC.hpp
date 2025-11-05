@@ -28,7 +28,17 @@
 //       5. Add the old head to the reclaim list
 //       6. Return the data
 //
-// See the documentation of Hazard_Ptr.hpp for the details about the hazard pointers.
+//   See the documentation of Hazard_Ptr.hpp for the details about the hazard pointers.
+//
+// Progress:
+//   Lock-free:
+//     Lock-free execution as the threads serializing on the head node
+//     are bound to functions (push and pop) with constant time complexity, O(1).
+//
+// Notes:
+//   1. Memory orders are chosen to
+//      release data before the visibility of the state transitions and
+//      to acquire data after observing the state transitions.
 //
 // Cautions:
 //   1. In case of a single producer (i.e. SPMC and SPSC),
@@ -53,13 +63,17 @@
 //      For these two configurations refer to lock-free/linked solutions instead.
 //      Together with Caution 1,
 //      the list of headers for lock-free/linked solutions are:
-//        Concurrent_Stack_LF_Linked_MPSC.hpp // applicable to Concurrent_Stack_LF_Linked_SPSC as well
-//        Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp // applicable to Concurrent_Stack_LF_Linked_SPMC as well
-//        Concurrent_Stack_LF_Linked_XX_MPMC.hpp (e.g. XX = reference_counter)
-//        Concurrent_Stack_LF_Linked_XX_SPMC.hpp (e.g. XX = reference_counter)
+//        Concurrent_Stack_LF_Linked_MPSC.hpp                     // same as Concurrent_Stack_LF_Linked_SPSC
+//        Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp              // same as Concurrent_Stack_LF_Linked_SPMC
+//        Concurrent_Stack_LF_Linked_XX_MPMC.hpp (e.g. ref_count)
+//        Concurrent_Stack_LF_Linked_XX_SPMC.hpp (e.g. ref_count)
 //   3. use stack_LF_Linked_MPMC and stack_LF_Linked_SPMC aliases at the end of this file
 //      to get the right specialization of Concurrent_Stack
 //      and to achieve the default arguments consistently.
+//
+// TODOs:
+//   1. Consider exponential backoff for the head node
+//      in order to deal with the high CAS contention on the head.
 
 #ifndef CONCURRENT_STACK_LF_LINKED_HAZARD_MPMC_HPP
 #define CONCURRENT_STACK_LF_LINKED_HAZARD_MPMC_HPP
@@ -226,7 +240,7 @@ namespace BA_Concurrency {
         std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Memory_Reclaimers::Hazard_Ptr)>,
         std::integral_constant<std::size_t, Hazard_Ptr_Record_Count>>;
 
-    // As explained in CAUTION-1 of the header documentation
+    // As explained in Caution 1 of the header documentation
     // SPMC confiuration is same as MPMC
     template <
         typename T,

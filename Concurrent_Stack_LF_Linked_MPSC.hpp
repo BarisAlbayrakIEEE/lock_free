@@ -23,6 +23,11 @@
 //       3. Delete the old head
 //       4. Return the data
 //
+// Progress:
+//   Lock-free:
+//     Lock-free execution as the threads serializing on the head node
+//     are bound to functions (push and pop) with constant time complexity, O(1).
+//
 // Cautions:
 //   1. In case of a single producer (i.e. SPMC and SPSC),
 //      the competition between the single producer and the consumer(s) remain
@@ -36,10 +41,14 @@
 //      
 //      See the two aliases at the end:
 //        stack_LF_linked_MPSC
-//        stack_LF_linked_SPMC = stack_LF_linked_MPSC
+//        stack_LF_linked_SPSC = stack_LF_linked_MPSC
 //   2. use stack_LF_Linked_MPSC and stack_LF_Linked_SPSC aliases at the end of this file
 //      to get the right specialization of Concurrent_Stack
 //      and to achieve the default arguments consistently.
+//
+// TODOs:
+//   1. Consider exponential backoff for the head node
+//      in order to deal with the high CAS contention on the head.
 
 #ifndef CONCURRENT_STACK_LF_LINKED_MPSC_HPP
 #define CONCURRENT_STACK_LF_LINKED_MPSC_HPP
@@ -98,7 +107,7 @@ namespace BA_Concurrency {
             }
         }
 
-        // Non-copyable/movable for simplicity.
+        // Non-copyable/movable for simplicity
         Concurrent_Stack(const Concurrent_Stack&) = delete;
         Concurrent_Stack& operator=(const Concurrent_Stack&) = delete;
         Concurrent_Stack(Concurrent_Stack&&) = delete;
@@ -165,12 +174,12 @@ namespace BA_Concurrency {
         T,
         Allocator<Node<T>>>;
 
-    // As explained in CAUTION-1 of the header documentation
-    // SPMC configuration is same as MPSC
+    // As explained in Caution 1 of the header documentation
+    // SPSC configuration is same as MPSC
     template <
         typename T,
         template <typename> typename Allocator = std::allocator>
-    using stack_LF_linked_SPMC = stack_LF_linked_MPSC<
+    using stack_LF_linked_SPSC = stack_LF_linked_MPSC<
         T,
         Allocator>;
 } // namespace BA_Concurrency

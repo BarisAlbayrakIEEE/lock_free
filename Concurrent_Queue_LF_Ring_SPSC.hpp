@@ -1,7 +1,7 @@
-// Concurrent_Queue_LF_Ring_MPMC.hpp
+// Concurrent_Queue_LF_Ring_SPSC.hpp
 //
 // Description:
-//   The ticket-based solution for the lock-free/ring/MPMC queue problem:
+//   The ticket-based solution for the lock-free/ring/SPSC queue problem:
 //     Synchronizes the two atomic tickets: _head and _tail
 //     in order to synchronize the producers and consumers.
 //     The tickets locate the head and tail pointer of the queue
@@ -103,7 +103,7 @@
 //        std::size_t consumer_ticket = _head.load(std::memory_order_acquire);
 //     2. Inspect if the queue is empty (an optimization for the empty case):
 //        if (consumer_ticket == _tail.load(std::memory_order_acquire)) return std::nullopt;
-//     3. Inspect if the slot is EMPTY for this consumer ticket:
+//     3. Inspect if the slot is EMPTY for this producer ticket:
 //        if (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1) return false;
 //     4. Weak CAS the _head to get the ownership of the slot:
 //        if (!_head.compare_exchange_strong(consumer_ticket, consumer_ticket + 1,...)) continue;
@@ -128,16 +128,16 @@
 //      to acquire data after observing the state transitions.
 //   2. push(): Back-pressures when the queue is full by spinning on its reserved slot.
 //      pop(): Back-pressures when the queue is empty by spinning on its reserved slot.
-//   3. The optimizations for single producer/consumer configurations
-//      can be found in the following header files:
-//        queue_LF_ring_MPSC.hpp
-//        queue_LF_ring_SPMC.hpp
-//        queue_LF_ring_SPSC.hpp
+//   3. This optimizations for simple producer/consumer configurations
+//      can be found in the following files:
+//        queue_LF_ring_MPSC
+//        queue_LF_ring_SPMC
+//        queue_LF_ring_SPSC
 //
 // Cautions:
 //   1. Threads may spin indefinitely if a counterpart thread fails mid-operation,
 //      before setting the expected state accordingly.
-//   2. Use queue_LF_ring_MPMC alias at the end of this file
+//   2. use queue_LF_ring_SPSC alias at the end of this file
 //      to get the right specialization of Concurrent_Queue
 //      and to achieve the default arguments consistently.
 //
@@ -149,8 +149,8 @@
 //      requires an exponential backoff strategy as well.
 //      Currently, only try_pop takes the edge condition into account.
 
-#ifndef CONCURRENT_QUEUE_LF_RING_MPMC_HPP
-#define CONCURRENT_QUEUE_LF_RING_MPMC_HPP
+#ifndef CONCURRENT_QUEUE_LF_RING_SPSC_HPP
+#define CONCURRENT_QUEUE_LF_RING_SPSC_HPP
 
 #include <atomic>
 #include <cstddef>
@@ -163,7 +163,7 @@
 #include "aux_type_traits.hpp"
 
 namespace BA_Concurrency {
-    // use queue_LF_ring_MPMC alias at the end of this file
+    // use queue_LF_ring_SPSC alias at the end of this file
     // to get the right specialization of Concurrent_Queue
     // and to achieve the default arguments consistently.
     template <
@@ -175,7 +175,7 @@ namespace BA_Concurrency {
     class Concurrent_Queue<
         true,
         Enum_Structure_Types::Static_Ring_Buffer,
-        Enum_Concurrency_Models::MPMC,
+        Enum_Concurrency_Models::SPSC,
         T,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>
     {
@@ -190,7 +190,7 @@ namespace BA_Concurrency {
         //
         // aligned to prevent false sharing
         struct alignas(64) Slot {
-            std::atomic<std::size_t> _expected_ticket;
+            std::size_t _expected_ticket;
             alignas(T) unsigned char _data[sizeof(T)];
             T* to_ptr() noexcept { return std::launder(reinterpret_cast<T*>(_data)); }
         };
@@ -276,7 +276,7 @@ namespace BA_Concurrency {
         //      but does not block others from operating on the other slots.
         //   4. The ABA problem is solved by the monotonous _tail ticket.
         //      See the definitions of FULL and EMPTY
-        //      given with the definition of _head and _tail members.
+        //      given with the decleration of _head  and _tail tickets.
         template <class U>
         void push(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
             // Step 1
@@ -319,7 +319,7 @@ namespace BA_Concurrency {
         //      but does not block others from operating on the other slots.
         //   4. The ABA problem is solved by the monotonous _head ticket.
         //      See the definitions of FULL and EMPTY
-        //      given with the definition of _head and _tail members.
+        //      given with the decleration of _head  and _tail tickets.
         std::optional<T> pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
             // Step 1
             std::size_t consumer_ticket = _head.fetch_add(1, std::memory_order_acq_rel);
@@ -373,7 +373,7 @@ namespace BA_Concurrency {
         //      the single producer configurations (SPMC and SPSC).
         //   2. The ABA problem is solved by the monotonous _tail ticket.
         //      See the definitions of FULL and EMPTY
-        //      given with the definition of _head and _tail members.
+        //      given with the decleration of _head  and _tail tickets.
         template <class U>
         bool try_push(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
             while (true) {
@@ -419,7 +419,7 @@ namespace BA_Concurrency {
         //      std::size_t consumer_ticket = _head.load(std::memory_order_acquire);
         //   2. Inspect if the queue is empty:
         //      if (consumer_ticket == _tail.load(std::memory_order_acquire)) return std::nullopt;
-        //   3. Inspect if the slot is EMPTY for this consumer ticket:
+        //   3. Inspect if the slot is EMPTY for this producer ticket:
         //      if (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1) return false;
         //   4. Weak CAS the _head to get the ownership of the slot:
         //      if (!_head.compare_exchange_strong(consumer_ticket, consumer_ticket + 1,...)) continue;
@@ -448,7 +448,7 @@ namespace BA_Concurrency {
         //      atomic types for _head and _tail anymore.
         //   2. The ABA problem is solved by the monotonous _head ticket.
         //      See the definitions of FULL and EMPTY
-        //      given with the definition of _head and _tail members.
+        //      given with the decleration of _head  and _tail tickets.
         std::optional<T> try_pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
             while (true) {
                 // Step 1
@@ -498,12 +498,12 @@ namespace BA_Concurrency {
     template <
         typename T,
         unsigned char Capacity_As_Pow2>
-    using queue_LF_ring_MPMC = Concurrent_Queue<
+    using queue_LF_ring_SPSC = Concurrent_Queue<
         true,
         Enum_Structure_Types::Static_Ring_Buffer,
-        Enum_Concurrency_Models::MPMC,
+        Enum_Concurrency_Models::SPSC,
         T,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>;
 } // namespace BA_Concurrency
 
-#endif // CONCURRENT_QUEUE_LF_RING_MPMC_HPP
+#endif // CONCURRENT_QUEUE_LF_RING_SPSC_HPP
