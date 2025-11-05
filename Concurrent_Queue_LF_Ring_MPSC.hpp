@@ -2,29 +2,29 @@
 //
 // Description:
 //   The ticket-based solution for the lock-free/ring/MPSC queue problem:
-//     A specialization of Concurrent_Queue_LF_Ring_MPSC.hpp
-//     optimized for the single consumer configuration.
+//     A specialization of Concurrent_Queue_LF_Ring_MPMC.hpp
+//     optimized for the MPSC configuration.
 //
 // Requirements:
 // - T must be noexcept-constructible.
 // - T must be noexcept-movable.
 //
 // Invariants:
-//   Producers and consumers shall hold the state invariant.
+//   Producers and the consumer shall hold the state invariant.
 //   See the definitions of _head and _tail members for the tickets
 //   that allow managing the slot states.
 //   The state invariants are as follows:
 //     1. For a FULL slot (i.e. contains published data) the following equality shall hold:
 //        slot._expected_ticket == producer_ticket
 //     2. For an EMPTY slot (i.e. does not contain data) the following equality shall hold:
-//        slot._expected_ticket == consumer_ticket + 1
+//        slot._expected_ticket == _head + 1
 //
 // Semantics:
-//   See Concurrent_Queue_LF_Ring_MPSC.hpp for details.
+//   See Concurrent_Queue_LF_Ring_MPMC.hpp for details.
 //
 // Optimizations Compared to MPMC:
 //   1. _tail usage for the empty queue inspection in try_pop function is canceled
-//      which terminates the data share between the producers and consumers.
+//      which terminates the data share between the producers and the consumer.
 //   2. The atomic type of _head is replaced by a regular non-atomic one.
 //
 // Semantics:
@@ -35,7 +35,7 @@
 //        while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
 //     3. The slot is owned now. push the data:
 //        ::new (slot.to_ptr()) T(std::forward<U>(data));
-//     4. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
+//     4. Publish the data by marking it as FULL (expected_ticket = _head + 1)
 //        Notice that, the FULL condition will be satisfied
 //        when the consumer ticket reaches the current producer ticket:
 //        slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
@@ -63,7 +63,7 @@
 //        if (!_tail.compare_exchange_strong(producer_ticket, producer_ticket + 1,...)) continue;
 //     4. The slot is owned now, push the data:
 //        ::new (slot.to_ptr()) T(std::forward<U>(data));
-//     5. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
+//     5. Publish the data by marking it as FULL (expected_ticket = _head + 1)
 //        Notice that, the FULL condition will be satisfied
 //        when the consumer ticket reaches the current producer ticket:
 //        slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
@@ -71,7 +71,7 @@
 //
 //   try_pop(): Having an infinite loop at the top to eliminate spurious failure of the weak CAS:
 //     1. Inspect if the slot is EMPTY for this consumer ticket:
-//        if (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1) return false;
+//        if (slot._expected_ticket.load(std::memory_order_acquire) != _head + 1) return false;
 //     2. The slot is owned now, pop the data:
 //        T* ptr = slot.to_ptr(); std::optional<T> data{ std::move(*ptr) };
 //     3. If not trivially destructible, call the T's destructor:
@@ -79,7 +79,7 @@
 //     4. Mark the slot as EMPTY (expected_ticket = producer_ticket)
 //        Notice that, the EMPTY condition will be satisfied
 //        when the producer reaches the next round of this consumer ticket:
-//        slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
+//        slot._expected_ticket.store(_head + _CAPACITY, std::memory_order_release);
 //     5. ++_head;
 //     6. return data;
 //
@@ -143,44 +143,19 @@ namespace BA_Concurrency {
         static constexpr std::size_t _CAPACITY = pow2_size<Capacity_As_Pow2>;
         static constexpr std::size_t _MASK     = _CAPACITY - 1;
 
-        // Stores the data (T) in a raw byte array instead of storing a T object
-        // and performs the construction and destruction manually
-        // in push and pop functions respectively.
-        // See the documentation of _head and _tail tickets below
-        // for _expected_ticket member.
-        //
-        // aligned to prevent false sharing
+        // See the class documentation in Concurrent_Queue_LF_Ring_MPMC.hpp
+        // for a detailed description about the Slot class.
         struct alignas(64) Slot {
             std::atomic<std::size_t> _expected_ticket;
             alignas(T) unsigned char _data[sizeof(T)];
             T* to_ptr() noexcept { return std::launder(reinterpret_cast<T*>(_data)); }
         };
 
-        // The monotonic (only incrementation is allowed) tickets: _head and _tail.
-        // The tickets simulates the head and tail pointers of the queue data structure.
-        // Here, additionally, they semantically act like a state flag
-        // which infers if a slot is FULL or EMPTY.
-        // Hence, this is a stateful queue design
-        // which requires the state invariants to be hold at any time.
-        // The tickets exceeds the capacity of the buffer
-        // as they increments monotonically.
-        // Hence, to achieve the index of a slot, a modulo operation is required.
-        // _MASK constant allows performing the modulo operation efficiently
-        // using a bitwise mask operation.
-        // The state invariants are as follows:
-        //   1. For a FULL slot (i.e. contains published data) the following equality shall hold:
-        //      slot._expected_ticket == producer_ticket
-        //   2. For an EMPTY slot (i.e. does not contain data) the following equality shall hold:
-        //      slot._expected_ticket == consumer_ticket + 1
-        //
-        // This is a flexible state management strategy.
-        // For example, for the FIFO to be achieved,
-        // a popped slot shall be ready for pushing
-        // only when the next round of the slot is reached.
-        // We can achieve this condition easily by
-        // setting the expected ticket of the slot to the ticket of the next round:
-        //   slot._expected_ticket = consumer_ticket + _CAPACITY
-        alignas(64) std::size_t _head{0};  // next ticket to pop
+        // See the member documentation in Concurrent_Queue_LF_Ring_MPMC.hpp
+        // for a detailed description about the tickets.
+        // In MPSC configuration, the only difference about the ticket definition is
+        // the _head ticket being a regular non-atomic type due to the single producer.
+        alignas(64) std::size_t _head{0};               // next ticket to pop
         alignas(64) std::atomic<std::size_t> _tail{0};  // next ticket to push
         Slot _slots[_CAPACITY];
 
@@ -222,19 +197,16 @@ namespace BA_Concurrency {
         //      while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
         //   3. The slot is owned now. push the data:
         //      ::new (slot.to_ptr()) T(std::forward<U>(data));
-        //   4. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
+        //   4. Publish the data by marking it as FULL (expected_ticket = _head + 1)
         //      Notice that, the FULL condition will be satisfied
         //      when the consumer ticket reaches the current producer ticket:
         //      slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
         //
         // Notes:
-        //   1. This producer function does not share data with the consumers
-        //      which is a significant detail for the optimization of
-        //      the single producer configurations (SPMC and SPSC).
-        //   2. Back-pressures when the queue is full by spinning on its reserved slot.
-        //   3. If stalls, only its reserved slot delays
+        //   1. Back-pressures when the queue is full by spinning on its reserved slot.
+        //   2. If stalls, only its reserved slot delays
         //      but does not block others from operating on the other slots.
-        //   4. The ABA problem is solved by the monotonous _tail ticket.
+        //   3. The ABA problem is solved by the monotonous _tail ticket.
         //      See the definitions of FULL and EMPTY
         //      given with the definition of _head and _tail members.
         template <class U>
@@ -270,13 +242,10 @@ namespace BA_Concurrency {
         //   6. return data;
         //
         // Notes:
-        //   1. This consumer function does not share data with the producers
-        //      which is a significant detail for the optimization of
-        //      the single consumer configurations (MPSC and SPSC).
-        //   2. Back-pressures when the queue is empty by spinning on its reserved slot.
-        //   3. If stalls, only its reserved slot delays
+        //   1. Back-pressures when the queue is empty by spinning on its reserved slot.
+        //   2. If stalls, only its reserved slot delays
         //      but does not block others from operating on the other slots.
-        //   4. The ABA problem is solved by the monotonous _head ticket.
+        //   3. The ABA problem is solved by the monotonous _head ticket.
         //      See the definitions of FULL and EMPTY
         //      given with the definition of _head and _tail members.
         std::optional<T> pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
@@ -320,17 +289,14 @@ namespace BA_Concurrency {
         //      if (!_tail.compare_exchange_strong(producer_ticket, producer_ticket + 1,...)) continue;
         //   4. The slot is owned now, push the data:
         //      ::new (slot.to_ptr()) T(std::forward<U>(data));
-        //   5. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
+        //   5. Publish the data by marking it as FULL (expected_ticket = _head + 1)
         //      Notice that, the FULL condition will be satisfied
         //      when the consumer ticket reaches the current producer ticket:
         //      slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
         //   6. return true;
         //
         // Notes:
-        //   1. This producer function does not share data with the consumers
-        //      which is a significant detail for the optimization of
-        //      the single producer configurations (SPMC and SPSC).
-        //   2. The ABA problem is solved by the monotonous _tail ticket.
+        //   1. The ABA problem is solved by the monotonous _tail ticket.
         //      See the definitions of FULL and EMPTY
         //      given with the definition of _head and _tail members.
         template <class U>
@@ -375,7 +341,7 @@ namespace BA_Concurrency {
         //
         // Operation steps: The infinite loop of MPMC is removed as the CAS is removed:
         //   1. Inspect if the slot is EMPTY for this consumer ticket:
-        //      if (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1) return false;
+        //      if (slot._expected_ticket.load(std::memory_order_acquire) != _head + 1) return false;
         //   2. The slot is owned now, pop the data:
         //      T* ptr = slot.to_ptr(); std::optional<T> data{ std::move(*ptr) };
         //   3. If not trivially destructible, call the T's destructor:
@@ -383,7 +349,7 @@ namespace BA_Concurrency {
         //   4. Mark the slot as EMPTY (expected_ticket = producer_ticket)
         //      Notice that, the EMPTY condition will be satisfied
         //      when the producer reaches the next round of this consumer ticket:
-        //      slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
+        //      slot._expected_ticket.store(_head + _CAPACITY, std::memory_order_release);
         //   5. ++_head;
         //   6. return data;
         //
@@ -419,9 +385,7 @@ namespace BA_Concurrency {
         }
 
         bool empty() const noexcept {
-            return
-                _head ==
-                _tail.load(std::memory_order_acquire);
+            return _head == _tail.load(std::memory_order_acquire);
         }
 
         std::size_t capacity() const noexcept { return _CAPACITY; }
