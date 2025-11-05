@@ -152,7 +152,6 @@
 #include <type_traits>
 #include <utility>
 #include "Concurrent_Queue.hpp"
-#include "enum_ring_designs.hpp"
 #include "aux_type_traits.hpp"
 
 namespace BA_Concurrency {
@@ -170,7 +169,6 @@ namespace BA_Concurrency {
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::MPMC,
         T,
-        std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Ticket)>,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>
     {
         static constexpr std::size_t _CAPACITY = pow2_size<Capacity_As_Pow2>;
@@ -495,7 +493,6 @@ namespace BA_Concurrency {
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::MPMC,
         T,
-        std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Ticket)>,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>;
 } // namespace BA_Concurrency
 
