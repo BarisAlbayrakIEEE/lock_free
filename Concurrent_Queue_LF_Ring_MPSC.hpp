@@ -30,7 +30,7 @@
 // Semantics:
 //   push():
 //     1. Increment the tail to obtain the producer ticket:
-//        const std::size_t producer_ticket = _tail.fetch_add(1, std::memory_order_acq_rel);
+//        const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);
 //     2. Wait until the slot expects the obtained producer ticket:
 //        while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
 //     3. The slot is owned now. push the data:
@@ -56,11 +56,11 @@
 //
 //   try_push(): Having an infinite loop at the top to eliminate spurious failure of the weak CAS:
 //     1. Load the _tail to the producer ticket:
-//        std::size_t producer_ticket = _tail.load(std::memory_order_acquire);
+//        std::size_t producer_ticket = _tail.value.load(std::memory_order_acquire);
 //     2. Inspect if the slot is FULL for this producer ticket:
 //        if (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket) return false;
 //     3. Weak CAS the _tail to get the ownership of the slot:
-//        if (!_tail.compare_exchange_strong(producer_ticket, producer_ticket + 1,...)) continue;
+//        if (!_tail.value.compare_exchange_strong(producer_ticket, producer_ticket + 1,...)) continue;
 //     4. The slot is owned now, push the data:
 //        ::new (slot.to_ptr()) T(std::forward<U>(data));
 //     5. Publish the data by marking it as FULL (expected_ticket = _head + 1)
@@ -140,6 +140,8 @@ namespace BA_Concurrency {
         T,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>
     {
+        using _CLWR = cache_line_wrapper<std::size_t>;
+        using _CLWA = cache_line_wrapper<std::atomic<std::size_t>>;
         static constexpr std::size_t _CAPACITY = pow2_size<Capacity_As_Pow2>;
         static constexpr std::size_t _MASK     = _CAPACITY - 1;
 
@@ -155,8 +157,8 @@ namespace BA_Concurrency {
         // for a detailed description about the tickets.
         // In MPSC configuration, the only difference about the ticket definition is
         // the _head ticket being a regular non-atomic type due to the single producer.
-        alignas(64) std::size_t _head{0};               // next ticket to pop
-        alignas(64) std::atomic<std::size_t> _tail{0};  // next ticket to push
+        _CLWR _head{0}; // next ticket to pop
+        _CLWA _tail{0}; // next ticket to push
         Slot _slots[_CAPACITY];
 
     public:
@@ -172,7 +174,7 @@ namespace BA_Concurrency {
         // destroy the elements that were enqueued but not yet dequeued
         ~Concurrent_Queue() {
             if constexpr (!std::is_trivially_destructible_v<T>) {
-                const std::size_t producer_ticket = _tail.load(std::memory_order_relaxed);
+                const std::size_t producer_ticket = _tail.value.load(std::memory_order_relaxed);
                 for (std::size_t ticket = _head; ticket < producer_ticket; ++p) {
                     auto& slot = _slots[ticket & _MASK];
                     if (slot._expected_ticket.load(std::memory_order_relaxed) == ticket + 1) {
@@ -192,7 +194,7 @@ namespace BA_Concurrency {
         //
         // Operation steps:
         //   1. Increment the tail to obtain the producer ticket:
-        //      const std::size_t producer_ticket = _tail.fetch_add(1, std::memory_order_acq_rel);
+        //      const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);
         //   2. Wait until the slot expects the obtained producer ticket:
         //      while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
         //   3. The slot is owned now. push the data:
@@ -212,7 +214,7 @@ namespace BA_Concurrency {
         template <class U>
         void push(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
             // Step 1
-            const std::size_t producer_ticket = _tail.fetch_add(1, std::memory_order_acq_rel);
+            const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);
             Slot& slot = _slots[producer_ticket & _MASK];
 
             // Step 2
@@ -280,11 +282,11 @@ namespace BA_Concurrency {
         //
         // Operation steps: Having an infinite loop at the top to eliminate spurious failure of the weak CAS:
         //   1. Load the _tail to the producer ticket:
-        //      std::size_t producer_ticket = _tail.load(std::memory_order_acquire);
+        //      std::size_t producer_ticket = _tail.value.load(std::memory_order_acquire);
         //   2. Inspect if the slot is FULL for this producer ticket:
         //      if (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket) return false;
         //   3. Weak CAS the _tail to get the ownership of the slot:
-        //      if (!_tail.compare_exchange_strong(producer_ticket, producer_ticket + 1,...)) continue;
+        //      if (!_tail.value.compare_exchange_strong(producer_ticket, producer_ticket + 1,...)) continue;
         //   4. The slot is owned now, push the data:
         //      ::new (slot.to_ptr()) T(std::forward<U>(data));
         //   5. Publish the data by marking it as FULL (expected_ticket = _head + 1)
@@ -301,7 +303,7 @@ namespace BA_Concurrency {
         bool try_push(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
             while (true) {
                 // Step 1
-                const std::size_t producer_ticket = _tail.load(std::memory_order_acquire);
+                const std::size_t producer_ticket = _tail.value.load(std::memory_order_acquire);
 
                 // Step 2
                 Slot& slot = _slots[producer_ticket & _MASK];
@@ -310,7 +312,7 @@ namespace BA_Concurrency {
 
                 // Step 3
                 if (
-                    !_tail.compare_exchange_weak(
+                    !_tail.value.compare_exchange_weak(
                         producer_ticket,
                         producer_ticket + 1,
                         std::memory_order_acq_rel,
@@ -383,7 +385,7 @@ namespace BA_Concurrency {
         }
 
         bool empty() const noexcept {
-            return _head == _tail.load(std::memory_order_acquire);
+            return _head == _tail.value.load(std::memory_order_acquire);
         }
 
         std::size_t capacity() const noexcept { return _CAPACITY; }

@@ -132,6 +132,7 @@ namespace BA_Concurrency {
         T,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>
     {
+        using _CLWR = cache_line_wrapper<std::size_t>;
         static constexpr std::size_t _CAPACITY = pow2_size<Capacity_As_Pow2>;
         static constexpr std::size_t _MASK     = _CAPACITY - 1;
 
@@ -147,8 +148,8 @@ namespace BA_Concurrency {
         // for a detailed description about the tickets.
         // In SPSC configuration, the only difference about the ticket definition is
         // the _tail ticket being a regular non-atomic type due to the single consumer.
-        alignas(64) std::size_t _head{0};  // next ticket to pop
-        alignas(64) std::size_t _tail{0};  // next ticket to push
+        _CLWR _head{0}; // next ticket to pop
+        _CLWR _tail{0}; // next ticket to push
         Slot _slots[_CAPACITY];
 
     public:
