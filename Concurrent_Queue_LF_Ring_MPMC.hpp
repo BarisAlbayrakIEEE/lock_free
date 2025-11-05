@@ -140,6 +140,14 @@
 //      and to achieve the default arguments consistently.
 //   2. Threads may spin indefinitely if a counterpart thread fails mid-operation,
 //      before setting the expected state accordingly.
+//
+// TODOs:
+//   1. The blocking operations (push and pop) back-pressures
+//      waiting the expected ticket of the reserved slot to satisfy ticket invariants.
+//      An exponential backoff strategy is required for these blocking operations.
+//   2. Similar to the 1st one, the edge cases (empty queue and full queue)
+//      requires an exponential backoff strategy as well.
+//      Currently, only try_pop takes the edge condition into account.
 
 #ifndef CONCURRENT_QUEUE_LF_RING_MPMC_HPP
 #define CONCURRENT_QUEUE_LF_RING_MPMC_HPP
