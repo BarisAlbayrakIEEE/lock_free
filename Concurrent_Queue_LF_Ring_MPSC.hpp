@@ -122,6 +122,7 @@
 #include <utility>
 #include "Concurrent_Queue.hpp"
 #include "aux_type_traits.hpp"
+#include "cache_line_wrapper.hpp"
 
 namespace BA_Concurrency {
     // use queue_LF_ring_MPSC alias at the end of this file

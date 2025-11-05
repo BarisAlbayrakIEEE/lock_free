@@ -29,7 +29,7 @@
 //
 // Semantics:
 //   push():
-//     1. Wait until the slot expects the obtained producer ticket:
+//     1. Wait until the slot expects the required producer ticket:
 //        while (slot._expected_ticket.load(std::memory_order_acquire) != _tail);
 //     2. The slot is owned now. push the data:
 //        ::new (slot.to_ptr()) T(std::forward<U>(data));
@@ -112,8 +112,10 @@
 #include <optional>
 #include <type_traits>
 #include <utility>
+#include <array>
 #include "Concurrent_Queue.hpp"
 #include "aux_type_traits.hpp"
+#include "cache_line_wrapper.hpp"
 
 namespace BA_Concurrency {
     // use queue_LF_ring_SPSC alias at the end of this file
@@ -138,9 +140,11 @@ namespace BA_Concurrency {
 
         // See the class documentation in Concurrent_Queue_LF_Ring_MPMC.hpp
         // for a detailed description about the Slot class.
+        // Notice that the raw byte storage is replaced by object store
+        // as the buffer 
         struct alignas(64) Slot {
             std::atomic<std::size_t> _expected_ticket;
-            alignas(T) unsigned char _data[sizeof(T)];
+            T _data;
             T* to_ptr() noexcept { return std::launder(reinterpret_cast<T*>(_data)); }
         };
 
@@ -150,7 +154,7 @@ namespace BA_Concurrency {
         // the _tail ticket being a regular non-atomic type due to the single consumer.
         _CLWR _head{0}; // next ticket to pop
         _CLWR _tail{0}; // next ticket to push
-        Slot _slots[_CAPACITY];
+        std::array<Slot, _CAPACITY>  _slots;
 
     public:
 
@@ -183,7 +187,7 @@ namespace BA_Concurrency {
         // Blocking enqueue: busy-wait while FULL at reservation time.
         //
         // Operation steps:
-        //   1. Wait until the slot expects the obtained producer ticket:
+        //   1. Wait until the slot expects the required producer ticket:
         //      while (slot._expected_ticket.load(std::memory_order_acquire) != _tail);
         //   2. The slot is owned now. push the data:
         //      ::new (slot.to_ptr()) T(std::forward<U>(data));
