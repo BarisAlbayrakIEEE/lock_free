@@ -34,25 +34,65 @@
 //   which is shown clearly in the following pseudocodes of push and pop.
 //
 //   push():
-//     1. Try to own the tail slot: CAS loop to increment it:
-//        while(!_tail.CAS(tail, tail + 1,...) { tail = _tail.load(...); }
-//     2. Sharing the ownership of the tail slot with a consumer: CAS loop to POP_DONE -> PUSH_PROGRESS:
-//        _slots[tail]._state.CAS(POP_DONE, PUSH_PROGRESS,...);
+//     1. Fetch increment the tail to obtain the producer ticket:
+//        const std::size_t producer_ticket = _tail.fetch_add(1, std::memory_order_acq_rel);
+//     2. Wait until the slot expects the obtained producer ticket:
+//        while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
 //     3. The slot is owned now. push the data:
-//        _slots[tail]._data = std::move(data);
-//     4. Store the state as PUSH_DONE:
-//        _slots[tail]._state.store(PUSH_DONE,...);
+//        ::new (slot.to_ptr()) T(std::forward<U>(data));
+//     4. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
+//        Notice that, the FULL condition will happen
+//        when the consumer ticket reaches the current producer ticket:
+//        slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
+//
 //   pop():
-//     1. Try to own the tail slot: CAS loop to decrement it:
-//        while(!_tail.CAS(tail, tail - 1,...) { tail = _tail.load(...); }
-//     2. Sharing the ownership of the [tail - 1] slot with a producer: CAS loop to PUSH_DONE -> POP_PROGRESS:
-//        _slots[tail - 1]._state.CAS(PUSH_DONE, POP_PROGRESS,...);
+//     1. Fetch increment the head to obtain the consumer ticket:
+//        std::size_t consumer_ticket = _head.fetch_add(1, std::memory_order_acq_rel);
+//     2. Wait until the slot expects the obtained consumer ticket:
+//        while (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1);
 //     3. The slot is owned now. pop the data:
-//        auto data = std::move(_slots[tail - 1]._data);
-//     4. Store the state as POP_DONE:
-//        _slots[tail - 1]._state.store(POP_DONE,...);
-//     5. return the popped data:
-//        return data;
+//        T* ptr = slot.to_ptr(); std::optional<T> data{ std::move(*ptr) };
+//     4. If not trivially destructible, call the T's destructor:
+//        if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
+//     5. Mark the slot as EMPTY (expected_ticket = producer_ticket)
+//        Notice that, the EMPTY condition will happen
+//        when the producer reaches the next round of this consumer ticket:
+//        slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
+//     6. return data;
+//
+//   try_push():
+//     1. Load the _tail to the producer ticket:
+//        std::size_t producer_ticket = _tail.load(std::memory_order_acquire);
+//     2. Inspect if the slot is FULL for this producer ticket:
+//        if (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket) return false;
+//     3. CAS the _tail to get the ownership of the slot:
+//        if (!_tail.compare_exchange_strong(producer_ticket, producer_ticket + 1,...)) continue;
+//     4. The slot is owned now, push the data:
+//        ::new (slot.to_ptr()) T(std::forward<U>(data));
+//     5. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
+//        Notice that, the FULL condition will happen
+//        when the consumer ticket reaches the current producer ticket:
+//        slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
+//     6. return true;
+//
+//   try_pop():
+//     1. Load the _head to the consumer ticket:
+//        std::size_t consumer_ticket = _head.load(std::memory_order_acquire);
+//     2. Inspect if the queue is empty (an optimization for the empty case):
+//        if (consumer_ticket == _tail.load(std::memory_order_acquire)) return std::nullopt;
+//     3. Inspect if the slot is EMPTY for this producer ticket:
+//        if (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1) return false;
+//     4. CAS the _head to get the ownership of the slot:
+//        if (!_head.compare_exchange_strong(consumer_ticket, consumer_ticket + 1,...)) continue;
+//     5. The slot is owned now, pop the data:
+//        T* ptr = slot.to_ptr(); std::optional<T> data{ std::move(*ptr) };
+//     6. If not trivially destructible, call the T's destructor:
+//        if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
+//     7. Mark the slot as EMPTY (expected_ticket = producer_ticket)
+//        Notice that, the EMPTY condition will happen
+//        when the producer reaches the next round of this consumer ticket:
+//        slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
+//     8. return data;
 //
 //   This algorithm is completely serialized on the atomic tail.
 //   All threads will suffer from starvation.
@@ -216,7 +256,7 @@ namespace BA_Concurrency {
         //      if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
         //   5. Mark the slot as EMPTY (expected_ticket = producer_ticket)
         //      Notice that, the EMPTY condition will happen
-        //      when the producer reaches the next round of this slot:
+        //      when the producer reaches the next round of this consumer ticket:
         //      slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
         //   6. return data;
         //
@@ -247,18 +287,28 @@ namespace BA_Concurrency {
 
         // Non-blocking enqueue: Returns false if FULL at reservation time.
         //
+        // The difference with the blocking push is that
+        // the non-blocking version does not request the slot ownership
+        // until its proven that the slot satisfies the push condition
+        // and the operation can be performed (i.e. the trial is going to succeed).
+        // This design is mandatory for the non-blocking operations
+        // as the non-blocking operations contracts not to modify the state of the queue
+        // in case of failure (i.e. the trial has failed).
+        //
         // Operation steps:
-        //   1. Fetch increment the tail to obtain the producer ticket:
-        //      const std::size_t producer_ticket = _tail.fetch_add(1, std::memory_order_acq_rel);
-        //   2. Inspect if the ring is FULL for this producer ticket:
+        //   1. Load the _tail to the producer ticket:
+        //      std::size_t producer_ticket = _tail.load(std::memory_order_acquire);
+        //   2. Inspect if the slot is FULL for this producer ticket:
         //      if (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket) return false;
-        //   3. The slot is owned now. push the data:
+        //   3. CAS the _tail to get the ownership of the slot:
+        //      if (!_tail.compare_exchange_strong(producer_ticket, producer_ticket + 1,...)) continue;
+        //   4. The slot is owned now, push the data:
         //      ::new (slot.to_ptr()) T(std::forward<U>(data));
-        //   4. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
+        //   5. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
         //      Notice that, the FULL condition will happen
         //      when the consumer ticket reaches the current producer ticket:
         //      slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
-        //   5. return true;
+        //   6. return true;
         //
         // Notes:
         //   1. If there exists a single producer (SPMC or SPSC), the tail index
@@ -266,41 +316,59 @@ namespace BA_Concurrency {
         template <class U>
         bool try_push(U&& data) noexcept {
             // Step 1
-            const std::size_t producer_ticket = _tail.fetch_add(1, std::memory_order_acq_rel);
-            Slot& slot = _slots[producer_ticket & _MASK];
+            const std::size_t producer_ticket = _tail.load(std::memory_order_acquire);
+            while (true) {
+                Slot& slot = _slots[producer_ticket & _MASK];
 
-            // Step 2
-            if (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket)
-                return false;
+                // Step 2
+                if (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket)
+                    return false;
 
-            // Step 3
-            ::new (slot.to_ptr()) T(std::forward<U>(data));
+                // Step 3
+                if (
+                    !_tail.compare_exchange_weak(
+                        producer_ticket,
+                        producer_ticket + 1,
+                        std::memory_order_acq_rel,
+                        std::memory_order_acquire)) continue;
 
-            // Step 4
-            slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
+                // Step 4
+                ::new (slot.to_ptr()) T(std::forward<U>(data));
 
-            // Step 5
-            return true;
+                // Step 5
+                slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
+
+                // Step 6
+                return true;
+            }
         }
 
         // Non-blocking dequeue: Returns nullopt if EMPTY at reservation time.
         //
+        // The difference with the blocking pop is that
+        // the non-blocking version does not request the slot ownership
+        // until its proven that the slot satisfies the pop condition
+        // and the operation can be performed (i.e. the trial is going to succeed).
+        // This design is mandatory for the non-blocking operations
+        // as the non-blocking operations contracts not to modify the state of the queue
+        // in case of failure (i.e. the trial has failed).
+        //
         // Operation steps:
-        //   1. Load the head:
-        //      std::size_t head = _head.load(std::memory_order_acquire);
+        //   1. Load the _head to the consumer ticket:
+        //      std::size_t consumer_ticket = _head.load(std::memory_order_acquire);
         //   2. Inspect if the queue is empty:
-        //      if (head == _tail.load(std::memory_order_acquire)) return std::nullopt;
-        //   3. CAS the head to get the ownership of the slot:
-        //      if (head == _tail.load(std::memory_order_acquire)) return std::nullopt;
-        //   4. Inspect if the slot expects the head:
-        //      if (slot._expected_ticket.load(std::memory_order_acquire) != head + 1) return std::nullopt;
-        //   5. Pop the data:
+        //      if (consumer_ticket == _tail.load(std::memory_order_acquire)) return std::nullopt;
+        //   3. Inspect if the slot is EMPTY for this producer ticket:
+        //      if (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1) return false;
+        //   4. CAS the _head to get the ownership of the slot:
+        //      if (!_head.compare_exchange_strong(consumer_ticket, consumer_ticket + 1,...)) continue;
+        //   5. The slot is owned now, pop the data:
         //      T* ptr = slot.to_ptr(); std::optional<T> data{ std::move(*ptr) };
         //   6. If not trivially destructible, call the T's destructor:
         //      if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
         //   7. Mark the slot as EMPTY (expected_ticket = producer_ticket)
         //      Notice that, the EMPTY condition will happen
-        //      when the producer reaches the next round of this slot:
+        //      when the producer reaches the next round of this consumer ticket:
         //      slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
         //   8. return data;
         //
@@ -319,38 +387,39 @@ namespace BA_Concurrency {
         //      atomic types for _head and _tail anymore.
         std::optional<T> try_pop() noexcept {
             // Step 1
-            std::size_t head = _head.load(std::memory_order_acquire);
+            std::size_t consumer_ticket = _head.load(std::memory_order_acquire);
 
             while (true) {
+                Slot& slot = _slots[consumer_ticket & _MASK];
+
                 // Step 2
-                if (head == _tail.load(std::memory_order_acquire))
+                if (consumer_ticket == _tail.load(std::memory_order_acquire))
                     return std::nullopt;
 
                 // Step 3
-                if (_head.compare_exchange_weak(
-                        head,
-                        head + 1,
+                if (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1)
+                    return std::nullopt;
+
+                // Step 4
+                if (
+                    !_head.compare_exchange_strong(
+                        consumer_ticket,
+                        consumer_ticket + 1,
                         std::memory_order_acq_rel,
-                        std::memory_order_acquire)) {
-                    Slot& slot = _slots[head & _MASK];
+                        std::memory_order_acquire)) continue;
 
-                    // Step 4
-                    if (slot._expected_ticket.load(std::memory_order_acquire) != head + 1)
-                        return std::nullopt;
+                // Step 5
+                T* ptr = slot.to_ptr();
+                std::optional<T> data{std::move(*ptr)};
 
-                    // Step 5
-                    T* ptr = slot.to_ptr();
-                    std::optional<T> data{std::move(*ptr)};
+                // Step 6
+                if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
 
-                    // Step 6
-                    if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
+                // Step 7
+                slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
 
-                    // Step 7
-                    slot._expected_ticket.store(head + _CAPACITY, std::memory_order_release);
-
-                    // Step 8
-                    return data;
-                }
+                // Step 8
+                return data;
             }
         }
 
