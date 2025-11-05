@@ -173,12 +173,25 @@ namespace BA_Concurrency {
         static constexpr std::size_t _CAPACITY = pow2_size<Capacity_As_Pow2>;
         static constexpr std::size_t _MASK     = _CAPACITY - 1;
 
+        // Stores the data (T) in a raw byte array instead of storing a T object
+        // and performs the construction and destruction manually
+        // in push and pop functions respectively.
         struct alignas(64) Slot {
             std::atomic<std::size_t> _expected_ticket;
             alignas(T) unsigned char _data[sizeof(T)];
             T* to_ptr() noexcept { return std::launder(reinterpret_cast<T*>(_data)); }
         };
 
+        // The _head and _tail tickets semantically mark the state of a slot as FULL or EMPTY
+        // For a FULL slot (i.e. contains published data) the following equality holds:
+        //   slot._expected_ticket == producer_ticket
+        // For an EMPTY slot (i.e. does not contain data) the following equality holds:
+        //   slot._expected_ticket == consumer_ticket + 1
+        //
+        // This is a flexible state management strategy.
+        // Consider, a consumer wants the popped slot to be available for pushing at the next round.
+        // We need to set the expected ticket of the slot to the ticket for the next round:
+        //   slot._expected_ticket = consumer_ticket + _CAPACITY
         alignas(64) std::atomic<std::size_t> _head{0};  // next ticket to pop
         alignas(64) std::atomic<std::size_t> _tail{0};  // next ticket to push
         Slot _slots[_CAPACITY];
@@ -225,8 +238,15 @@ namespace BA_Concurrency {
         //      slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
         //
         // Notes:
-        //   1. If there exists a single producer (SPMC or SPSC), the tail index
-        //      does not need to be an atomic.
+        //   1. This producer function does not share data with the consumers
+        //      which is a significant detail for the optimization of
+        //      the single producer configurations (SPMC and SPSC).
+        //   2. Back-pressures when the queue is full by spinning on its reserved slot.
+        //   3. If stalls, only its reserved slot delays
+        //      but does not block others from operating on the other slots.
+        //   4. The ABA problem is solved by the monotonous _tail ticket.
+        //      See the definitions of FULL and EMPTY
+        //      given with the decleration of _head  and _tail tickets.
         template <class U>
         void push(U&& data) noexcept {
             // Step 1
@@ -261,8 +281,15 @@ namespace BA_Concurrency {
         //   6. return data;
         //
         // Notes:
-        //   1. If there exists a single producer (SPMC or SPSC), the head index
-        //      does not need to be an atomic.
+        //   1. This consumer function does not share data with the producers
+        //      which is a significant detail for the optimization of
+        //      the single consumer configurations (MPSC and SPSC).
+        //   2. Back-pressures when the queue is empty by spinning on its reserved slot.
+        //   3. If stalls, only its reserved slot delays
+        //      but does not block others from operating on the other slots.
+        //   4. The ABA problem is solved by the monotonous _head ticket.
+        //      See the definitions of FULL and EMPTY
+        //      given with the decleration of _head  and _tail tickets.
         std::optional<T> pop() noexcept {
             // Step 1
             std::size_t consumer_ticket = _head.fetch_add(1, std::memory_order_acq_rel);
@@ -311,8 +338,12 @@ namespace BA_Concurrency {
         //   6. return true;
         //
         // Notes:
-        //   1. If there exists a single producer (SPMC or SPSC), the tail index
-        //      does not need to be an atomic.
+        //   1. This producer function does not share data with the consumers
+        //      which is a significant detail for the optimization of
+        //      the single producer configurations (SPMC and SPSC).
+        //   2. The ABA problem is solved by the monotonous _tail ticket.
+        //      See the definitions of FULL and EMPTY
+        //      given with the decleration of _head  and _tail tickets.
         template <class U>
         bool try_push(U&& data) noexcept {
             // Step 1
@@ -373,8 +404,8 @@ namespace BA_Concurrency {
         //   8. return data;
         //
         // Notes:
-        //   1. Step 2 yields coupling of the producer and consumer threads via _tail member.
-        //      _tail is used to detect the empty queue situation
+        //   1. Step 2 yields a data share between the producer and consumer threads: _tail.
+        //      Here, _tail is used to detect the empty queue situation
         //      earlier with a cheap operation (i.e. atomic load)
         //      before using CAS operations which requires much more CPU resurces.
         //      Its not mandatory but an optimization.
@@ -383,8 +414,11 @@ namespace BA_Concurrency {
         //      and to optimize the two tickets: _head and _tail.
         //      This will cause a little performance loss in case of empty queues
         //      for SPMC and SPSC but let the optimization be more effective for the other functions.
-        //      For example, the SPSC configuration would require
+        //      For example, the SPSC configuration would not require
         //      atomic types for _head and _tail anymore.
+        //   2. The ABA problem is solved by the monotonous _head ticket.
+        //      See the definitions of FULL and EMPTY
+        //      given with the decleration of _head  and _tail tickets.
         std::optional<T> try_pop() noexcept {
             // Step 1
             std::size_t consumer_ticket = _head.load(std::memory_order_acquire);
