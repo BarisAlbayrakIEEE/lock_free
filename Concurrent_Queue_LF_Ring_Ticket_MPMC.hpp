@@ -305,18 +305,18 @@ namespace BA_Concurrency {
         //   8. return data;
         //
         // Notes:
-        //   1. Step 2 yields coupling with producer threads via _tail member.
+        //   1. Step 2 yields coupling of the producer and consumer threads via _tail member.
         //      _tail is used to detect the empty queue situation
         //      earlier with a cheap operation (i.e. atomic load)
-        //      before using costly CAS operations.
+        //      before using CAS operations which requires much more CPU resurces.
         //      Its not mandatory but an optimization.
         //      SPMC and SPSC configurations would exclude the _tail use in try_pop method
         //      in order to separate the producers and consumers completely
         //      and to optimize the two tickets: _head and _tail.
         //      This will cause a little performance loss in case of empty queues
         //      for SPMC and SPSC but let the optimization be more effective for the other functions.
-        //      For example, SPSC configuration may define _head and _tail
-        //      with non-atomic types.
+        //      For example, the SPSC configuration would require
+        //      atomic types for _head and _tail anymore.
         std::optional<T> try_pop() noexcept {
             // Step 1
             std::size_t head = _head.load(std::memory_order_acquire);
