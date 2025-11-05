@@ -205,9 +205,7 @@ namespace BA_Concurrency {
         //
         // Notes:
         //   1. Back-pressures when the queue is full by spinning on its reserved slot.
-        //   2. If stalls, only its reserved slot delays
-        //      but does not block others from operating on the other slots.
-        //   3. The ABA problem is solved by the monotonous _tail ticket.
+        //   2. The ABA problem is solved by the monotonous _tail ticket.
         //      See the definitions of FULL and EMPTY
         //      given with the decleration of _head  and _tail tickets.
         template <class U>

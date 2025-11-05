@@ -186,7 +186,7 @@ namespace BA_Concurrency {
         //      while (slot._expected_ticket.load(std::memory_order_acquire) != _tail);
         //   2. The slot is owned now. push the data:
         //      ::new (slot.to_ptr()) T(std::forward<U>(data));
-        //   3. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
+        //   3. Publish the data by marking it as FULL (expected_ticket = _head + 1)
         //      Notice that, the FULL condition will be satisfied
         //      when the consumer ticket reaches the current producer ticket:
         //      slot._expected_ticket.store(_tail + 1, std::memory_order_release);
@@ -194,9 +194,7 @@ namespace BA_Concurrency {
         //
         // Notes:
         //   1. Back-pressures when the queue is full by spinning on its reserved slot.
-        //   2. If stalls, only its reserved slot delays
-        //      but does not block others from operating on the other slots.
-        //   3. The ABA problem is solved by the monotonous _tail ticket.
+        //   2. The ABA problem is solved by the monotonous _tail ticket.
         //      See the definitions of FULL and EMPTY
         //      given with the decleration of _head  and _tail tickets.
         template <class U>
@@ -224,7 +222,7 @@ namespace BA_Concurrency {
         //      T* ptr = slot.to_ptr(); std::optional<T> data{ std::move(*ptr) };
         //   3. If not trivially destructible, call the T's destructor:
         //      if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
-        //   4. Mark the slot as EMPTY (expected_ticket = producer_ticket)
+        //   4. Mark the slot as EMPTY (expected_ticket = _tail)
         //      Notice that, the EMPTY condition will be satisfied
         //      when the producer reaches the next round of this consumer ticket:
         //      slot._expected_ticket.store(_head + _CAPACITY, std::memory_order_release);
@@ -233,9 +231,7 @@ namespace BA_Concurrency {
         //
         // Notes:
         //   1. Back-pressures when the queue is empty by spinning on its reserved slot.
-        //   2. If stalls, only its reserved slot delays
-        //      but does not block others from operating on the other slots.
-        //   3. The ABA problem is solved by the monotonous _head ticket.
+        //   2. The ABA problem is solved by the monotonous _head ticket.
         //      See the definitions of FULL and EMPTY
         //      given with the definition of _head and _tail members.
         std::optional<T> pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
@@ -275,7 +271,7 @@ namespace BA_Concurrency {
         //      if (slot._expected_ticket.load(std::memory_order_acquire) != _tail) return false;
         //   2. The slot is owned now, push the data:
         //      ::new (slot.to_ptr()) T(std::forward<U>(data));
-        //   3. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
+        //   3. Publish the data by marking it as FULL (expected_ticket = _head + 1)
         //      Notice that, the FULL condition will be satisfied
         //      when the consumer ticket reaches the current producer ticket:
         //      slot._expected_ticket.store(_tail + 1, std::memory_order_release);
@@ -323,7 +319,7 @@ namespace BA_Concurrency {
         //      T* ptr = slot.to_ptr(); std::optional<T> data{ std::move(*ptr) };
         //   3. If not trivially destructible, call the T's destructor:
         //      if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
-        //   4. Mark the slot as EMPTY (expected_ticket = producer_ticket)
+        //   4. Mark the slot as EMPTY (expected_ticket = _tail)
         //      Notice that, the EMPTY condition will be satisfied
         //      when the producer reaches the next round of this consumer ticket:
         //      slot._expected_ticket.store(_head + _CAPACITY, std::memory_order_release);
@@ -362,9 +358,7 @@ namespace BA_Concurrency {
         }
 
         bool empty() const noexcept {
-            return
-                _head.load(std::memory_order_acquire) ==
-                _tail.load(std::memory_order_acquire);
+            return _head = _tail;
         }
 
         std::size_t capacity() const noexcept { return _CAPACITY; }

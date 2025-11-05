@@ -182,6 +182,10 @@ namespace BA_Concurrency {
         static constexpr std::size_t _CAPACITY = pow2_size<Capacity_As_Pow2>;
         static constexpr std::size_t _MASK     = _CAPACITY - 1;
 
+        struct alignas(std::hardware_destructive_interference_size) CL {
+            std::atomic<std::uint64_t> v{0};
+        };
+
         // Stores the data (T) in a raw byte array instead of storing a T object
         // and performs the construction and destruction manually
         // in push and pop functions respectively.

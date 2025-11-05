@@ -243,9 +243,7 @@ namespace BA_Concurrency {
         //
         // Notes:
         //   1. Back-pressures when the queue is empty by spinning on its reserved slot.
-        //   2. If stalls, only its reserved slot delays
-        //      but does not block others from operating on the other slots.
-        //   3. The ABA problem is solved by the monotonous _head ticket.
+        //   2. The ABA problem is solved by the monotonous _head ticket.
         //      See the definitions of FULL and EMPTY
         //      given with the definition of _head and _tail members.
         std::optional<T> pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
