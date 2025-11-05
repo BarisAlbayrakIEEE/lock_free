@@ -9,19 +9,24 @@
 //     See the definitions of _head and _tail members of the queue for the details.
 //
 // Requirements:
-// - _CAPACITY must be a power of two (for fast masking).
 // - T must be noexcept-constructible.
 // - T must be noexcept-movable.
 //
-// Invariant:
-//   See the definitions of _head and _tail for the FULL and EMPTY states.
-//   Producers and consumers hold the state invariant.
+// Invariants:
+//   Producers and consumers shall hold the state invariant.
+//   See the definitions of _head and _tail members for the tickets
+//   that allow managing the slot states.
+//   The state invariants are as follows:
+//     1. For a FULL slot (i.e. contains published data) the following equality shall hold:
+//        slot._expected_ticket == producer_ticket
+//     2. For an EMPTY slot (i.e. does not contain data) the following equality shall hold:
+//        slot._expected_ticket == consumer_ticket + 1
 //
 // Semantics:
 //   Slot class:
 //     The ring buffer is a contiguous array of Slot objects.
-//     A slot encapsulattes two members:
-//       1. The data is stored in a byte array.
+//     A slot encapsulates two members:
+//       1. The data is stored in a byte array of size of T.
 //       2. The expected ticket of the slot
 //          which flexibly defines the state of the slot as FULL or EMPTY.
 //
@@ -50,22 +55,21 @@
 //   while the single consumer configurations will do the same for the _head ticket.
 //   There exist other issues for the optimization which are discussed
 //   in the documentation of the corresponding header file.
-//   
 //
 //   push():
-//     1. Fetch increment the tail to obtain the producer ticket:
+//     1. Increment the tail to obtain the producer ticket:
 //        const std::size_t producer_ticket = _tail.fetch_add(1, std::memory_order_acq_rel);
 //     2. Wait until the slot expects the obtained producer ticket:
 //        while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
 //     3. The slot is owned now. push the data:
 //        ::new (slot.to_ptr()) T(std::forward<U>(data));
 //     4. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
-//        Notice that, the FULL condition will happen
+//        Notice that, the FULL condition will be satisfied
 //        when the consumer ticket reaches the current producer ticket:
 //        slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
 //
 //   pop():
-//     1. Fetch increment the head to obtain the consumer ticket:
+//     1. Increment the head to obtain the consumer ticket:
 //        std::size_t consumer_ticket = _head.fetch_add(1, std::memory_order_acq_rel);
 //     2. Wait until the slot expects the obtained consumer ticket:
 //        while (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1);
@@ -74,88 +78,68 @@
 //     4. If not trivially destructible, call the T's destructor:
 //        if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
 //     5. Mark the slot as EMPTY (expected_ticket = producer_ticket)
-//        Notice that, the EMPTY condition will happen
+//        Notice that, the EMPTY condition will be satisfied
 //        when the producer reaches the next round of this consumer ticket:
 //        slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
 //     6. return data;
 //
-//   try_push():
+//   try_push(): Having an infinite loop at the top to eliminate spurious failure of the weak CAS:
 //     1. Load the _tail to the producer ticket:
 //        std::size_t producer_ticket = _tail.load(std::memory_order_acquire);
 //     2. Inspect if the slot is FULL for this producer ticket:
 //        if (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket) return false;
-//     3. CAS the _tail to get the ownership of the slot:
+//     3. Weak CAS the _tail to get the ownership of the slot:
 //        if (!_tail.compare_exchange_strong(producer_ticket, producer_ticket + 1,...)) continue;
 //     4. The slot is owned now, push the data:
 //        ::new (slot.to_ptr()) T(std::forward<U>(data));
 //     5. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
-//        Notice that, the FULL condition will happen
+//        Notice that, the FULL condition will be satisfied
 //        when the consumer ticket reaches the current producer ticket:
 //        slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
 //     6. return true;
 //
-//   try_pop():
+//   try_pop(): Having an infinite loop at the top to eliminate spurious failure of the weak CAS:
 //     1. Load the _head to the consumer ticket:
 //        std::size_t consumer_ticket = _head.load(std::memory_order_acquire);
 //     2. Inspect if the queue is empty (an optimization for the empty case):
 //        if (consumer_ticket == _tail.load(std::memory_order_acquire)) return std::nullopt;
 //     3. Inspect if the slot is EMPTY for this producer ticket:
 //        if (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1) return false;
-//     4. CAS the _head to get the ownership of the slot:
+//     4. Weak CAS the _head to get the ownership of the slot:
 //        if (!_head.compare_exchange_strong(consumer_ticket, consumer_ticket + 1,...)) continue;
 //     5. The slot is owned now, pop the data:
 //        T* ptr = slot.to_ptr(); std::optional<T> data{ std::move(*ptr) };
 //     6. If not trivially destructible, call the T's destructor:
 //        if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
 //     7. Mark the slot as EMPTY (expected_ticket = producer_ticket)
-//        Notice that, the EMPTY condition will happen
+//        Notice that, the EMPTY condition will be satisfied
 //        when the producer reaches the next round of this consumer ticket:
 //        slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
 //     8. return data;
 //
-//   This algorithm is completely serialized on the atomic tail.
-//   All threads will suffer from starvation.
-//
 // Progress:
 //   Lock-free:
-//     NOT EVEN OBSTRUCTION-FREE!
+//     Lock-free execution regardless of the level of contention
+//     as each thread runs in isolation on its reserved slot.
 //
 // Notes:
-//   Memory orders are chosen to
-//   release data before the visibility of the state transitions and
-//   to acquire data after observing the state transitions.
+//   1. Memory orders are chosen to
+//      release data before the visibility of the state transitions and
+//      to acquire data after observing the state transitions.
+//   2. push(): Back-pressures when the queue is full by spinning on its reserved slot.
+//      pop(): Back-pressures when the queue is empty by spinning on its reserved slot.
+//   3. This optimizations for simple producer/consumer configurations
+//      can be found in the following files:
+//        queue_LF_ring_ticket_MPSC
+//        queue_LF_ring_ticket_SPMC
+//        queue_LF_ring_ticket_SPSC
 //
-// CAUTION:
-//   ABA remains unsolved.
-//   A thread having a state data stale from the previous round of the ring
-//   may interfere with the thread working on the same slot for the current round.
-//
-// CAUTION:
-//   This is a simple conceptual model for a lock-free/ring-buffer/MPMC queue problem
-//   but actually not lock-free; even worst not obstruction-free
-//   as all threads are serialized on the atomic tail.
-//   Actually, this is one-to-one conversion of a single thread queue to a concurrent one:
-//     a push increments the tail index and a pop decrements it
-//     where the synchronization for the tail index is handled by a state flag.
-//
-// CAUTION:
-//   This model does not allow optimizations for simple producer/consumer cases.
-//   Even under SPSC configuration the same synchronization model is required
-//   as all threads serialize on the atomic tail.
-//   Hence, MPSC, SPMC and SPSC configurations use the same alias:
-//     queue_LF_ring_ticket_MPSC = queue_LF_ring_ticket_MPMC
-//     queue_LF_ring_ticket_SPMC = queue_LF_ring_ticket_MPMC
-//     queue_LF_ring_ticket_SPSC = queue_LF_ring_ticket_MPMC
-//   See the end of this header for the alias definitiions.
-//
-// CAUTION:
-//   use queue_LF_ring_ticket_MPMC alias at the end of this file
-//   to get the right specialization of Concurrent_Queue
-//   and to achieve the default arguments consistently.
-//
-// CAUTION:
-//   See Concurrent_Queue_LF_Ring_Ticket_MPMC for ticket-based version
-//   which guarantees lock-free execution.
+// Cautions:
+//   1. use queue_LF_ring_ticket_MPMC alias at the end of this file
+//      to get the right specialization of Concurrent_Queue
+//      and to achieve the default arguments consistently.
+//   2. Threads may spin indefinitely if a counterpart thread fails mid-operation,
+//      before setting the expected state accordingly.
 
 #ifndef CONCURRENT_QUEUE_LF_RING_TICKET_MPMC_HPP
 #define CONCURRENT_QUEUE_LF_RING_TICKET_MPMC_HPP
@@ -195,21 +179,36 @@ namespace BA_Concurrency {
         // Stores the data (T) in a raw byte array instead of storing a T object
         // and performs the construction and destruction manually
         // in push and pop functions respectively.
+        // See the documentation of _head and _tail tickets below
+        // for _expected_ticket member.
+        //
+        // aligned to prevent false sharing
         struct alignas(64) Slot {
             std::atomic<std::size_t> _expected_ticket;
             alignas(T) unsigned char _data[sizeof(T)];
             T* to_ptr() noexcept { return std::launder(reinterpret_cast<T*>(_data)); }
         };
 
-        // The _head and _tail tickets semantically mark the state of a slot as FULL or EMPTY
-        // For a FULL slot (i.e. contains published data) the following equality holds:
-        //   slot._expected_ticket == producer_ticket
-        // For an EMPTY slot (i.e. does not contain data) the following equality holds:
-        //   slot._expected_ticket == consumer_ticket + 1
+        // The monotonic (only incrementation is allowed) tickets: _head and _tail.
+        // The tickets simulates the head and tail pointers of the queue data structure.
+        // Here, additionally, they semantically act like a state flag
+        // which infers if a slot is FULL or EMPTY.
+        // Hence, this is a stateful queue design
+        // which requires the state invariants to be hold at any time.
+        // The tickets exceeds the capacity of the buffer
+        // as they increments monotonically.
+        // Hence, to achieve the index of a slot, a modulo operation is required.
+        // _MASK constant allows performing the modulo operation efficiently
+        // using a bitwise mask operation.
+        // The state invariants are as follows:
+        //   1. For a FULL slot (i.e. contains published data) the following equality shall hold:
+        //      slot._expected_ticket == producer_ticket
+        //   2. For an EMPTY slot (i.e. does not contain data) the following equality shall hold:
+        //      slot._expected_ticket == consumer_ticket + 1
         //
         // This is a flexible state management strategy.
-        // For example, the ticket-based ring queue requires
-        // that a popped slot shall be ready for pushing
+        // For example, for the FIFO to be achieved,
+        // a popped slot shall be ready for pushing
         // only when the next round of the slot is reached.
         // We can achieve this condition easily by
         // setting the expected ticket of the slot to the ticket of the next round:
@@ -242,20 +241,21 @@ namespace BA_Concurrency {
             }
         }
 
+        // remove copies for simplicity
         Concurrent_Queue(const Concurrent_Queue&) = delete;
         Concurrent_Queue& operator=(const Concurrent_Queue&) = delete;
 
         // Blocking enqueue: busy-wait while FULL at reservation time.
         //
         // Operation steps:
-        //   1. Fetch increment the tail to obtain the producer ticket:
+        //   1. Increment the tail to obtain the producer ticket:
         //      const std::size_t producer_ticket = _tail.fetch_add(1, std::memory_order_acq_rel);
         //   2. Wait until the slot expects the obtained producer ticket:
         //      while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
         //   3. The slot is owned now. push the data:
         //      ::new (slot.to_ptr()) T(std::forward<U>(data));
         //   4. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
-        //      Notice that, the FULL condition will happen
+        //      Notice that, the FULL condition will be satisfied
         //      when the consumer ticket reaches the current producer ticket:
         //      slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
         //
@@ -288,7 +288,7 @@ namespace BA_Concurrency {
         // Blocking dequeue: busy-wait while EMPTY at reservation time.
         //
         // Operation steps:
-        //   1. Fetch increment the head to obtain the consumer ticket:
+        //   1. Increment the head to obtain the consumer ticket:
         //      std::size_t consumer_ticket = _head.fetch_add(1, std::memory_order_acq_rel);
         //   2. Wait until the slot expects the obtained consumer ticket:
         //      while (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1);
@@ -297,7 +297,7 @@ namespace BA_Concurrency {
         //   4. If not trivially destructible, call the T's destructor:
         //      if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
         //   5. Mark the slot as EMPTY (expected_ticket = producer_ticket)
-        //      Notice that, the EMPTY condition will happen
+        //      Notice that, the EMPTY condition will be satisfied
         //      when the producer reaches the next round of this consumer ticket:
         //      slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
         //   6. return data;
@@ -344,17 +344,17 @@ namespace BA_Concurrency {
         // as the non-blocking operations contracts not to modify the state of the queue
         // in case of failure (i.e. the trial has failed).
         //
-        // Operation steps:
+        // Operation steps: Having an infinite loop at the top to eliminate spurious failure of the weak CAS:
         //   1. Load the _tail to the producer ticket:
         //      std::size_t producer_ticket = _tail.load(std::memory_order_acquire);
         //   2. Inspect if the slot is FULL for this producer ticket:
         //      if (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket) return false;
-        //   3. CAS the _tail to get the ownership of the slot:
+        //   3. Weak CAS the _tail to get the ownership of the slot:
         //      if (!_tail.compare_exchange_strong(producer_ticket, producer_ticket + 1,...)) continue;
         //   4. The slot is owned now, push the data:
         //      ::new (slot.to_ptr()) T(std::forward<U>(data));
         //   5. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
-        //      Notice that, the FULL condition will happen
+        //      Notice that, the FULL condition will be satisfied
         //      when the consumer ticket reaches the current producer ticket:
         //      slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
         //   6. return true;
@@ -368,18 +368,18 @@ namespace BA_Concurrency {
         //      given with the decleration of _head  and _tail tickets.
         template <class U>
         bool try_push(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
-            // Step 1
-            const std::size_t producer_ticket = _tail.load(std::memory_order_acquire);
             while (true) {
-                Slot& slot = _slots[producer_ticket & _MASK];
+                // Step 1
+                const std::size_t producer_ticket = _tail.load(std::memory_order_acquire);
 
                 // Step 2
+                Slot& slot = _slots[producer_ticket & _MASK];
                 if (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket)
                     return false;
 
                 // Step 3
                 if (
-                    !_tail.compare_exchange_strong(
+                    !_tail.compare_exchange_weak(
                         producer_ticket,
                         producer_ticket + 1,
                         std::memory_order_acq_rel,
@@ -406,21 +406,21 @@ namespace BA_Concurrency {
         // as the non-blocking operations contracts not to modify the state of the queue
         // in case of failure (i.e. the trial has failed).
         //
-        // Operation steps:
+        // Operation steps: Having an infinite loop at the top to eliminate spurious failure of the weak CAS:
         //   1. Load the _head to the consumer ticket:
         //      std::size_t consumer_ticket = _head.load(std::memory_order_acquire);
         //   2. Inspect if the queue is empty:
         //      if (consumer_ticket == _tail.load(std::memory_order_acquire)) return std::nullopt;
         //   3. Inspect if the slot is EMPTY for this producer ticket:
         //      if (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1) return false;
-        //   4. CAS the _head to get the ownership of the slot:
+        //   4. Weak CAS the _head to get the ownership of the slot:
         //      if (!_head.compare_exchange_strong(consumer_ticket, consumer_ticket + 1,...)) continue;
         //   5. The slot is owned now, pop the data:
         //      T* ptr = slot.to_ptr(); std::optional<T> data{ std::move(*ptr) };
         //   6. If not trivially destructible, call the T's destructor:
         //      if constexpr (!std::is_trivially_destructible_v<T>) ptr->~T();
         //   7. Mark the slot as EMPTY (expected_ticket = producer_ticket)
-        //      Notice that, the EMPTY condition will happen
+        //      Notice that, the EMPTY condition will be satisfied
         //      when the producer reaches the next round of this consumer ticket:
         //      slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
         //   8. return data;
@@ -442,10 +442,10 @@ namespace BA_Concurrency {
         //      See the definitions of FULL and EMPTY
         //      given with the decleration of _head  and _tail tickets.
         std::optional<T> try_pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
-            // Step 1
-            std::size_t consumer_ticket = _head.load(std::memory_order_acquire);
-
             while (true) {
+                // Step 1
+                std::size_t consumer_ticket = _head.load(std::memory_order_acquire);
+
                 // Step 2
                 if (consumer_ticket == _tail.load(std::memory_order_acquire))
                     return std::nullopt;
@@ -457,7 +457,7 @@ namespace BA_Concurrency {
 
                 // Step 4
                 if (
-                    !_head.compare_exchange_strong(
+                    !_head.compare_exchange_weak(
                         consumer_ticket,
                         consumer_ticket + 1,
                         std::memory_order_acq_rel,
