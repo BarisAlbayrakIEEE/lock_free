@@ -390,13 +390,12 @@ namespace BA_Concurrency {
             std::size_t consumer_ticket = _head.load(std::memory_order_acquire);
 
             while (true) {
-                Slot& slot = _slots[consumer_ticket & _MASK];
-
                 // Step 2
                 if (consumer_ticket == _tail.load(std::memory_order_acquire))
                     return std::nullopt;
 
                 // Step 3
+                Slot& slot = _slots[consumer_ticket & _MASK];
                 if (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1)
                     return std::nullopt;
 
@@ -442,27 +441,6 @@ namespace BA_Concurrency {
         T,
         std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Brute_Force)>,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>;
-    
-    // As all threads serialize on the atomic tail,
-    // MPSC, SPMC and SPSC are the same as MPMC configuration.
-    template <
-        typename T,
-        unsigned char Capacity_As_Pow2>
-    using queue_LF_ring_brute_force_MPSC = queue_LF_ring_brute_force_MPMC<
-        T,
-        Capacity_As_Pow2>;
-    template <
-        typename T,
-        unsigned char Capacity_As_Pow2>
-    using queue_LF_ring_brute_force_SPMC = queue_LF_ring_brute_force_MPMC<
-        T,
-        Capacity_As_Pow2>;
-    template <
-        typename T,
-        unsigned char Capacity_As_Pow2>
-    using queue_LF_ring_brute_force_SPSC = queue_LF_ring_brute_force_MPMC<
-        T,
-        Capacity_As_Pow2>;
 } // namespace BA_Concurrency
 
 #endif // CONCURRENT_QUEUE_LF_RING_BRUTE_FORCE_MPMC_HPP
