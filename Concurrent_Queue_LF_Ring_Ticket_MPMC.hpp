@@ -189,8 +189,11 @@ namespace BA_Concurrency {
         //   slot._expected_ticket == consumer_ticket + 1
         //
         // This is a flexible state management strategy.
-        // Consider, a consumer wants the popped slot to be available for pushing at the next round.
-        // We need to set the expected ticket of the slot to the ticket for the next round:
+        // For example, the ticket-based ring queue requires
+        // that a popped slot shall be ready for pushing
+        // only when the next round of the slot is reached.
+        // We can achieve this condition easily by
+        // setting the expected ticket of the slot to the ticket of the next round:
         //   slot._expected_ticket = consumer_ticket + _CAPACITY
         alignas(64) std::atomic<std::size_t> _head{0};  // next ticket to pop
         alignas(64) std::atomic<std::size_t> _tail{0};  // next ticket to push
