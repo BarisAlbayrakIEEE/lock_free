@@ -1,37 +1,56 @@
-// Concurrent_Queue_LF_Ring_Brute_Force_MPMC.hpp
+// Concurrent_Queue_LF_Ring_Ticket_MPMC.hpp
 //
 // Description:
-//   The brute force solution for the lock-free/ring/MPMC queue problem:
-//     Synchronize the tail of the static ring buffer 
-//       which is shared between producer and consumer threads.
-//     Define an atomic state per buffer slot
-//       which synchronizes the producer-consumer pair working on the same slot.
+//   The ticket-based solution for the lock-free/ring/MPMC queue problem:
+//     Synchronizes the two atomic tickets: _head and _tail
+//     in order to synchronize the producers and consumers.
+//     The tickets locate the head and tail pointer of the queue
+//     while effectively managing the states of each slot (FULL or EMPTY).
+//     See the definitions of _head and _tail members of the queue for the details.
 //
 // Requirements:
 // - _CAPACITY must be a power of two (for fast masking).
+// - T must be noexcept-constructible.
 // - T must be noexcept-movable.
 //
 // Invariant:
-//   No fragmentation within the buffer is allowed.
-//   data shall be continuously stored into the buffer
-//   and popped without creating gaps.
+//   See the definitions of _head and _tail for the FULL and EMPTY states.
+//   Producers and consumers hold the state invariant.
 //
 // Semantics:
 //   Slot class:
 //     The ring buffer is a contiguous array of Slot objects.
 //     A slot encapsulattes two members:
-//       1. The data of type T
-//       2. A state flag indicating if the slot is ready to use.
+//       1. The data is stored in a byte array.
+//       2. The expected ticket of the slot
+//          which flexibly defines the state of the slot as FULL or EMPTY.
 //
-//   Slot states:
-//     4 possible states:
-//       1. POP_PROGRESS
-//       2. POP_DONE (initial state of a slot)
-//       3. PUSH_PROGRESS
-//       4. PUSH_DONE
+//   The threads are completely isolated by the well aligned slots (no false sharing)
+//   such that each thread works on a different slot at any time.
+//   This is provided by the ticket approach.
 //
-//   A pair of producer and consumer threads shares the ownership of a slot
-//   which is shown clearly in the following pseudocodes of push and pop.
+//   The producers rely on the shared _tail ticket
+//   while the consumers use the _head ticket.
+//   Hence, the only contention is on the _head and _tail tickets
+//   among the producers and consumers respectively.
+//   The producer threads serialize at _tail while
+//   the consumers serialize at _head.
+//   The only exception is try_pop method
+//   which loads _tail for an optimization for the empty-queue edge case.
+//   See the Cautions section below which states that
+//   the single consumer configurations exclude the use of _tail ticket
+//   in order to optimize the _tail synchronization.
+//   
+//   The shared use of the _head and _tail tickets
+//   disappears for the single producer and single consumer configurations
+//   keeping in mind that these configurations
+//   will exclude _tail in try_pop function.
+//   The single producer configurations will replace
+//   the atomic type of the _tail ticket with a regular non-atomic type,
+//   while the single consumer configurations will do the same for the _head ticket.
+//   There exist other issues for the optimization which are discussed
+//   in the documentation of the corresponding header file.
+//   
 //
 //   push():
 //     1. Fetch increment the tail to obtain the producer ticket:
@@ -124,13 +143,13 @@
 //   Even under SPSC configuration the same synchronization model is required
 //   as all threads serialize on the atomic tail.
 //   Hence, MPSC, SPMC and SPSC configurations use the same alias:
-//     queue_LF_ring_brute_force_MPSC = queue_LF_ring_brute_force_MPMC
-//     queue_LF_ring_brute_force_SPMC = queue_LF_ring_brute_force_MPMC
-//     queue_LF_ring_brute_force_SPSC = queue_LF_ring_brute_force_MPMC
+//     queue_LF_ring_ticket_MPSC = queue_LF_ring_ticket_MPMC
+//     queue_LF_ring_ticket_SPMC = queue_LF_ring_ticket_MPMC
+//     queue_LF_ring_ticket_SPSC = queue_LF_ring_ticket_MPMC
 //   See the end of this header for the alias definitiions.
 //
 // CAUTION:
-//   use queue_LF_ring_brute_force_MPMC alias at the end of this file
+//   use queue_LF_ring_ticket_MPMC alias at the end of this file
 //   to get the right specialization of Concurrent_Queue
 //   and to achieve the default arguments consistently.
 //
@@ -138,8 +157,8 @@
 //   See Concurrent_Queue_LF_Ring_Ticket_MPMC for ticket-based version
 //   which guarantees lock-free execution.
 
-#ifndef CONCURRENT_QUEUE_LF_RING_BRUTE_FORCE_MPMC_HPP
-#define CONCURRENT_QUEUE_LF_RING_BRUTE_FORCE_MPMC_HPP
+#ifndef CONCURRENT_QUEUE_LF_RING_TICKET_MPMC_HPP
+#define CONCURRENT_QUEUE_LF_RING_TICKET_MPMC_HPP
 
 #include <atomic>
 #include <cstddef>
@@ -153,21 +172,21 @@
 #include "aux_type_traits.hpp"
 
 namespace BA_Concurrency {
-    // use queue_LF_ring_brute_force_MPMC alias at the end of this file
+    // use queue_LF_ring_ticket_MPMC alias at the end of this file
     // to get the right specialization of Concurrent_Queue
     // and to achieve the default arguments consistently.
     template <
         typename T,
         unsigned char Capacity_As_Pow2>
-    requires ( // for the thread safety of pop as it returns std::optional<T>
-            std::is_nothrow_move_constructible_v<T> &&
-            std::is_nothrow_move_assignable_v<T>)
+    requires (
+            std::is_nothrow_constructible_v<T> &&
+            std::is_nothrow_move_constructible_v<T>)
     class Concurrent_Queue<
         true,
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::MPMC,
         T,
-        std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Brute_Force)>,
+        std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Ticket)>,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>
     {
         static constexpr std::size_t _CAPACITY = pow2_size<Capacity_As_Pow2>;
@@ -251,7 +270,7 @@ namespace BA_Concurrency {
         //      See the definitions of FULL and EMPTY
         //      given with the decleration of _head  and _tail tickets.
         template <class U>
-        void push(U&& data) noexcept {
+        void push(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
             // Step 1
             const std::size_t producer_ticket = _tail.fetch_add(1, std::memory_order_acq_rel);
             Slot& slot = _slots[producer_ticket & _MASK];
@@ -293,7 +312,7 @@ namespace BA_Concurrency {
         //   4. The ABA problem is solved by the monotonous _head ticket.
         //      See the definitions of FULL and EMPTY
         //      given with the decleration of _head  and _tail tickets.
-        std::optional<T> pop() noexcept {
+        std::optional<T> pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
             // Step 1
             std::size_t consumer_ticket = _head.fetch_add(1, std::memory_order_acq_rel);
             Slot& slot = _slots[consumer_ticket & _MASK];
@@ -348,7 +367,7 @@ namespace BA_Concurrency {
         //      See the definitions of FULL and EMPTY
         //      given with the decleration of _head  and _tail tickets.
         template <class U>
-        bool try_push(U&& data) noexcept {
+        bool try_push(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
             // Step 1
             const std::size_t producer_ticket = _tail.load(std::memory_order_acquire);
             while (true) {
@@ -360,7 +379,7 @@ namespace BA_Concurrency {
 
                 // Step 3
                 if (
-                    !_tail.compare_exchange_weak(
+                    !_tail.compare_exchange_strong(
                         producer_ticket,
                         producer_ticket + 1,
                         std::memory_order_acq_rel,
@@ -422,7 +441,7 @@ namespace BA_Concurrency {
         //   2. The ABA problem is solved by the monotonous _head ticket.
         //      See the definitions of FULL and EMPTY
         //      given with the decleration of _head  and _tail tickets.
-        std::optional<T> try_pop() noexcept {
+        std::optional<T> try_pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
             // Step 1
             std::size_t consumer_ticket = _head.load(std::memory_order_acquire);
 
@@ -471,13 +490,13 @@ namespace BA_Concurrency {
     template <
         typename T,
         unsigned char Capacity_As_Pow2>
-    using queue_LF_ring_brute_force_MPMC = Concurrent_Queue<
+    using queue_LF_ring_ticket_MPMC = Concurrent_Queue<
         true,
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::MPMC,
         T,
-        std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Brute_Force)>,
+        std::integral_constant<std::uint8_t, static_cast<std::uint8_t>(Enum_Ring_Designs::Ticket)>,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>;
 } // namespace BA_Concurrency
 
-#endif // CONCURRENT_QUEUE_LF_RING_BRUTE_FORCE_MPMC_HPP
+#endif // CONCURRENT_QUEUE_LF_RING_TICKET_MPMC_HPP
