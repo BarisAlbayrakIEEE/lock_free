@@ -121,58 +121,65 @@
 //     8. return data;
 //
 // Progress:
-//   Lock-free:
-//     The original algorithm (liblfds) is based on Dmitry Vyukov's lock-free queue:
-//     and is not lock-free:
-//       https://stackoverflow.com/a/54755605
+//   The original algorithm (liblfds) is based on Dmitry Vyukov's lock-free queue:
+//   and is not lock-free:
+//     https://stackoverflow.com/a/54755605
 //
-//     The original library blocks the head and tail pointers and the associated threads
-//     until the ticket requirement defined by FULL and EMPTY rulesis satisfied.
-//     In other words, while a threads is blocked waiting for its reserved slot,
-//     the other threads are also blocked as the head and tail pointers
-//     are only advanced when the thread achieves to satisfy the ticket condition.
-//     In summary push function of the original algorithm is as follows:
-//       1. producer_ticket = _tail.load()
-//       2. INFINITE LOOP
-//       3.   IF producer_ticket == slot._expected_ticket.load())
-//       4.     IF _tail.CAS(producer_ticket, producer_ticket + 1)
-//       5.       BREAK
-//       6. Push the data
-//       7. slot._expected_ticket.store(producer_ticket + 1);
-//       
-//     My push function:
-//       1. producer_ticket = _tail.fetch_add()
-//       2. while(!slot._expected_ticket.load() != producer_ticket);
-//       3. Push the data
-//       4. slot._expected_ticket.store(producer_ticket + 1);
+//   The original library blocks the head and tail pointers and the associated threads
+//   until the ticket requirement defined by FULL and EMPTY rulesis satisfied.
+//   In other words, while a threads is blocked waiting for its reserved slot,
+//   the other threads are also blocked as the head and tail pointers
+//   are only advanced when the thread achieves to satisfy the ticket condition.
+//   In summary push function of the original algorithm is as follows:
+//     1. producer_ticket = _tail.load()
+//     2. INFINITE LOOP
+//     3.   IF producer_ticket == slot._expected_ticket.load())
+//     4.     IF _tail.CAS(producer_ticket, producer_ticket + 1)
+//     5.       BREAK
+//     6. Push the data
+//     7. slot._expected_ticket.store(producer_ticket + 1);
 //     
-//     The difference between the two algorithms is:
-//       liblfds advances the tail pointer conditionally:
-//         IF producer_ticket == slot._expected_ticket.load())
-//       My push advances the tail pointer non-conditionally.
-//     
-//     liblfds blocks all threads when one stalls
-//     due to this conditional pointer advance.
-//     The reason behind this conditional pointer advance is
-//     to keep the FIFO order TEMPORALLY SAFE.
-//     The thread coming first shall right first.
-//     However, here in this design, the two pointers always advance.
-//     Hence, the FIFO order is not hold temporally.
-//     A producer thread (PT1) arriving earlier may be blocked and write later
-//     than another producer (PT2) arriving later.
-//     Correspondingly, the data of PT2 will be read before that of PT1.
-//     This is a fundamental structural failure for a queue data structure!
+//   My push function:
+//     1. producer_ticket = _tail.fetch_add()
+//     2. while(!slot._expected_ticket.load() != producer_ticket);
+//     3. Push the data
+//     4. slot._expected_ticket.store(producer_ticket + 1);
+//   
+//   The difference between the two algorithms is:
+//     liblfds advances the tail pointer when the two conditions are satisfied:
+//       IF producer_ticket == slot._expected_ticket.load()
+//       IF _tail.CAS succeeds
+//     My push function advances the tail pointer non-conditionally.
+//   
+//   liblfds blocks all threads when one stalls
+//   due to this conditional pointer advance.
+//   The reason behind this conditional pointer advance is
+//   to keep the FIFO order TEMPORALLY SAFE.
+//   The thread coming first shall right first.
+//   However, here in this design, the two pointers always advance.
+//   Hence, the FIFO order is not preserved temporally.
+//   A producer thread (PT1) arriving earlier may be blocked and write later
+//   than another producer (PT2) arriving later.
+//   Correspondingly, the data of PT2 will be read before that of PT1.
+//   This is a fundamental structural failure for a queue data structure!
 //
-//     liblfds follows the basic invariant of the queue data structure
-//     loosing the lock-free progress guarantee.
-//     Actaually, the problem is caused by the data structure itself:
-//       A queue shall satisfy FIFO.
+//   liblfds follows the basic invariant of the queue data structure
+//   loosing the lock-freedom.
+//   However, advancing the head or tail pointers unconditionally
+//   provides lock-freedom but does not preserve the FIFO order.
 //
-//     A real solution to the problem is 
+//   A real solution to the problem is to manage the threads such that
+//   when a thread stalls another one can take over its work and finish it.
+//   There are a number of approaches in this respect:
+//     1. 
+//     2. 
+//     3. 
+//     4. 
+//     5. 
+//     6. 
+//     7. 
 //
-//     In summary, this design provides the lock-free execution
-//     regardless of the level of contention
-//     as each thread runs in isolation on its reserved slot.
+//   Concurrent_Queue_LF_Ring_XXX_MPMC.hpp introduces the solution with XXX.
 //
 // Notes:
 //   1. Memory orders are chosen to
@@ -192,6 +199,10 @@
 //   2. Use queue_LF_ring_MPMC alias at the end of this file
 //      to get the right specialization of Concurrent_Queue
 //      and to achieve the default arguments consistently.
+//   3. As stated in the Progress section, 
+//      this version does not preserve the FIFO order.
+//      See Concurrent_Queue_LF_Ring_XXX_MPMC.hpp
+//      for a solution based on XXX approach.
 //
 // TODOs:
 //   1. The blocking operations (push and pop) back-pressures
@@ -214,6 +225,7 @@
 #include "Concurrent_Queue.hpp"
 #include "aux_type_traits.hpp"
 #include "cache_line_wrapper.hpp"
+#include "order_compliances.hpp"
 
 namespace BA_Concurrency {
     // use queue_LF_ring_MPMC alias at the end of this file
@@ -230,7 +242,8 @@ namespace BA_Concurrency {
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::MPMC,
         T,
-        std::integral_constant<unsigned char, Capacity_As_Pow2>>
+        std::integral_constant<unsigned char, Capacity_As_Pow2>,
+        FIFO_None>
     {
         using _CLWA = cache_line_wrapper<std::atomic<std::size_t>>;
         static constexpr std::size_t _CAPACITY = pow2_size<Capacity_As_Pow2>;
@@ -557,7 +570,8 @@ namespace BA_Concurrency {
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::MPMC,
         T,
-        std::integral_constant<unsigned char, Capacity_As_Pow2>>;
+        std::integral_constant<unsigned char, Capacity_As_Pow2>,
+        FIFO_None>;
 } // namespace BA_Concurrency
 
 #endif // CONCURRENT_QUEUE_LF_RING_MPMC_HPP
