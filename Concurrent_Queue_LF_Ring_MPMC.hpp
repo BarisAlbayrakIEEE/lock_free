@@ -7,6 +7,9 @@
 //     The tickets locate the head and tail pointer of the queue
 //     while effectively managing the states of each slot (FULL or EMPTY).
 //     See the definitions of _head and _tail members of the queue for the details.
+//  
+//   KEEP IN MIND THAT THE REPOSITORY IS BASED ON THE OPEN SOURCE LOCK-FREE LIBRARY:
+//     liiblfds: https://liblfds.org/
 //
 // Requirements:
 // - T must be noexcept-constructible.
@@ -119,7 +122,56 @@
 //
 // Progress:
 //   Lock-free:
-//     Lock-free execution regardless of the level of contention
+//     The original algorithm (liblfds) is based on Dmitry Vyukov's lock-free queue:
+//     and is not lock-free:
+//       https://stackoverflow.com/a/54755605
+//
+//     The original library blocks the head and tail pointers and the associated threads
+//     until the ticket requirement defined by FULL and EMPTY rulesis satisfied.
+//     In other words, while a threads is blocked waiting for its reserved slot,
+//     the other threads are also blocked as the head and tail pointers
+//     are only advanced when the thread achieves to satisfy the ticket condition.
+//     In summary push function of the original algorithm is as follows:
+//       1. producer_ticket = _tail.load()
+//       2. INFINITE LOOP
+//       3.   IF producer_ticket == slot._expected_ticket.load())
+//       4.     IF _tail.CAS(producer_ticket, producer_ticket + 1)
+//       5.       BREAK
+//       6. Push the data
+//       7. slot._expected_ticket.store(producer_ticket + 1);
+//       
+//     My push function:
+//       1. producer_ticket = _tail.fetch_add()
+//       2. while(!slot._expected_ticket.load() != producer_ticket);
+//       3. Push the data
+//       4. slot._expected_ticket.store(producer_ticket + 1);
+//     
+//     The difference between the two algorithms is:
+//       liblfds advances the tail pointer conditionally:
+//         IF producer_ticket == slot._expected_ticket.load())
+//       My push advances the tail pointer non-conditionally.
+//     
+//     liblfds blocks all threads when one stalls
+//     due to this conditional pointer advance.
+//     The reason behind this conditional pointer advance is
+//     to keep the FIFO order TEMPORALLY SAFE.
+//     The thread coming first shall right first.
+//     However, here in this design, the two pointers always advance.
+//     Hence, the FIFO order is not hold temporally.
+//     A producer thread (PT1) arriving earlier may be blocked and write later
+//     than another producer (PT2) arriving later.
+//     Correspondingly, the data of PT2 will be read before that of PT1.
+//     This is a fundamental structural failure for a queue data structure!
+//
+//     liblfds follows the basic invariant of the queue data structure
+//     loosing the lock-free progress guarantee.
+//     Actaually, the problem is caused by the data structure itself:
+//       A queue shall satisfy FIFO.
+//
+//     A real solution to the problem is 
+//
+//     In summary, this design provides the lock-free execution
+//     regardless of the level of contention
 //     as each thread runs in isolation on its reserved slot.
 //
 // Notes:

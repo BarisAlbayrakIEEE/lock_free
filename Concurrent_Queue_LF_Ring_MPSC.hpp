@@ -85,8 +85,9 @@
 //
 // Progress:
 //   Lock-free:
-//     Lock-free execution regardless of the level of contention
-//     as each thread runs in isolation on its reserved slot.
+//     Strictly lock-free
+//     See the Progress section of the documentation of:
+//       Concurrent_Queue_LF_Ring_MPMC.hpp
 //
 // Notes:
 //   1. Memory orders are chosen to

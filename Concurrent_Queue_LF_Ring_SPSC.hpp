@@ -81,7 +81,9 @@
 //
 // Progress:
 //   Lock-free:
-//     Lock-free execution regardless of the level of contention.
+//     Strictly lock-free
+//     See the Progress section of the documentation of:
+//       Concurrent_Queue_LF_Ring_MPMC.hpp
 //
 // Notes:
 //   1. push(): Back-pressures when the queue is full by spinning on its reserved slot.
