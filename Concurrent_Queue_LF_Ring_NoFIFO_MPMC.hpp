@@ -1,4 +1,4 @@
-// Concurrent_Queue_LF_Ring_MPMC.hpp
+// Concurrent_Queue_LF_Ring_NoFIFO_MPMC.hpp
 //
 // Description:
 //   The ticket-based solution for the lock-free/ring/MPMC queue problem:
@@ -443,10 +443,11 @@ namespace BA_Concurrency {
         //      given with the definition of _head and _tail members.
         template <class U>
         bool try_push(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
-            while (true) {
-                // Step 1
-                const std::size_t producer_ticket = _tail.value.load(std::memory_order_acquire);
+            // Step 1
+            const std::size_t producer_ticket = _tail.value.load(std::memory_order_acquire);
 
+            // the infinite loop
+            while (true) {
                 // Step 2
                 Slot& slot = _slots[producer_ticket & _MASK];
                 if (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket)
@@ -517,10 +518,11 @@ namespace BA_Concurrency {
         //      See the definitions of FULL and EMPTY
         //      given with the definition of _head and _tail members.
         std::optional<T> try_pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
-            while (true) {
-                // Step 1
-                std::size_t consumer_ticket = _head.value.load(std::memory_order_acquire);
+            // Step 1
+            std::size_t consumer_ticket = _head.value.load(std::memory_order_acquire);
 
+            // the infinite loop
+            while (true) {
                 // Step 2
                 if (consumer_ticket == _tail.value.load(std::memory_order_acquire))
                     return std::nullopt;
