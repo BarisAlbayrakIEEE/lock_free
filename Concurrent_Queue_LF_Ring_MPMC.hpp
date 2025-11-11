@@ -1,15 +1,15 @@
 // Concurrent_Queue_LF_Ring_MPMC.hpp
 //
 // Description:
-//   The ticket-based solution for the lock-free/ring/MPMC queue problem:
-//     Synchronizes the two atomic tickets: _head and _tail
+//   The ticket-based ring buffer solution for the lock-free/ring/MPMC queue problem:
+//     Synchronizes the two atomic tickets, _head and _tail,
 //     in order to synchronize the producers and consumers.
-//     The tickets locate the head and tail pointer of the queue
+//     The tickets locate the _head and _tail pointer of the queue
 //     while effectively managing the states of each slot (FULL or EMPTY).
 //     See the definitions of _head and _tail members of the queue for the details.
 //  
 //   KEEP IN MIND THAT THE REPOSITORY IS BASED ON THE OPEN SOURCE LOCK-FREE LIBRARY:
-//     liiblfds: https://liblfds.org/
+//     liblfds: https://liblfds.org/
 //
 // Requirements:
 // - T must be noexcept-constructible.
@@ -60,7 +60,7 @@
 //   in the documentation of the corresponding header file.
 //
 //   push():
-//     1. Increment the tail to obtain the producer ticket:
+//     1. Increment the _tail to obtain the producer ticket:
 //        const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);
 //     2. Wait until the slot expects the obtained producer ticket:
 //        while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
@@ -72,7 +72,7 @@
 //        slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
 //
 //   pop():
-//     1. Increment the head to obtain the consumer ticket:
+//     1. Increment the _head to obtain the consumer ticket:
 //        std::size_t consumer_ticket = _head.value.fetch_add(1, std::memory_order_acq_rel);
 //     2. Wait until the slot expects the obtained consumer ticket:
 //        while (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1);
@@ -125,10 +125,10 @@
 //   and is not lock-free:
 //     https://stackoverflow.com/a/54755605
 //
-//   The original library blocks the head and tail pointers and the associated threads
+//   The original library blocks the _head and _tail pointers and the associated threads
 //   until the ticket requirement defined by FULL and EMPTY rules is satisfied.
 //   In other words, while a threads is blocked waiting for its reserved slot,
-//   the other threads are also blocked as the head and tail pointers
+//   the other threads are also blocked as the _head and _tail pointers
 //   are only advanced when the thread achieves to satisfy the ticket condition.
 //   In summary push function of the original algorithm is as follows:
 //     1. producer_ticket = _tail.load()
@@ -146,10 +146,10 @@
 //     4. slot._expected_ticket.store(producer_ticket + 1);
 //   
 //   The difference between the two algorithms is:
-//     liblfds advances the tail pointer when the two conditions are satisfied:
+//     liblfds advances the _tail pointer when the two conditions are satisfied:
 //       IF producer_ticket == slot._expected_ticket.load()
 //       IF _tail.CAS succeeds
-//     My push function advances the tail pointer non-conditionally.
+//     My push function advances the _tail pointer non-conditionally.
 //   
 //   liblfds blocks all threads when one stalls
 //   due to this conditional pointer advance.
@@ -166,7 +166,7 @@
 //
 //   liblfds follows the basic invariant of the queue data structure
 //   loosing the lock-freedom.
-//   However, advancing the head or tail pointers unconditionally
+//   However, advancing the _head or _tail pointers unconditionally
 //   provides lock-freedom but does not preserve the FIFO order.
 //
 // Notes:
@@ -196,7 +196,6 @@
 //      An exponential backoff strategy is required for these blocking operations.
 //   2. Similar to the 1st one, the edge cases (empty queue and full queue)
 //      requires an exponential backoff strategy as well.
-//      Currently, only try_pop takes the edge condition into account.
 
 #ifndef CONCURRENT_QUEUE_LF_RING_MPMC_HPP
 #define CONCURRENT_QUEUE_LF_RING_MPMC_HPP
@@ -249,7 +248,7 @@ namespace BA_Concurrency {
         };
 
         // The monotonic (only incrementation is allowed) tickets: _head and _tail.
-        // The tickets simulates the head and tail pointers of the queue data structure.
+        // The tickets simulates the _head and _tail pointers of the queue data structure.
         // Here, additionally, they semantically act like a state flag
         // which infers if a slot is FULL or EMPTY.
         // Hence, this is a stateful queue design
@@ -309,7 +308,7 @@ namespace BA_Concurrency {
         // Blocking enqueue: busy-wait while FULL at reservation time.
         //
         // Operation steps:
-        //   1. Increment the tail to obtain the producer ticket:
+        //   1. Increment the _tail to obtain the producer ticket:
         //      const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);
         //   2. Wait until the slot expects the obtained producer ticket:
         //      while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
@@ -349,7 +348,7 @@ namespace BA_Concurrency {
         // Blocking dequeue: busy-wait while EMPTY at reservation time.
         //
         // Operation steps:
-        //   1. Increment the head to obtain the consumer ticket:
+        //   1. Increment the _head to obtain the consumer ticket:
         //      std::size_t consumer_ticket = _head.value.fetch_add(1, std::memory_order_acq_rel);
         //   2. Wait until the slot expects the obtained consumer ticket:
         //      while (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1);
