@@ -199,10 +199,10 @@ The difference between the two algorithms is:
 liblfds blocks all threads when one stalls
 due to this conditional pointer advance.
 The reason behind this conditional pointer advance is
-to keep the FIFO order TEMPORALLY SAFE.
+to keep the **FIFO** order **temporally safe**.
 The thread coming first shall write/read first.
 However, here in this design, the two pointers always advance.
-Hence, the FIFO order is preserved ONLY LOGICALLY BUT NOT TEMPORARILY.
+Hence, the FIFO order is preserved **only logically but not temporally**.
 A producer thread (PT1) arriving earlier may be blocked and write later
 than another producer (PT2) arriving later.
 Correspondingly, the data of PT2 will be read before that of PT1.
