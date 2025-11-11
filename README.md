@@ -45,7 +45,7 @@ The design is similar with the following libraries:
 - liblfds unbounded MPMC queue
 
 ### 2.1.1. Description <a id='sec211'></a>
-Synchronizes the two atomic tickets, head and tail,
+Synchronizes the two atomic tickets, **head** and **tail**,
 in order to synchronize the producers and consumers.
 The tickets locate the head and tail pointer of the queue
 while effectively managing the states of each slot (**FULL** or **EMPTY**).
