@@ -93,8 +93,6 @@ The producers rely on the shared tail ticket
 while the consumers use the head ticket.
 Hence, the only contention is on the head and tail tickets
 among the producers and consumers respectively.
-The producer threads serialize at tail while
-the consumers serialize at head.
 The only exception is try_pop method
 which loads tail for an optimization for the empty-queue edge case.
 See the Cautions section below which states that
@@ -104,12 +102,10 @@ in order to optimize the tail synchronization.
 The shared use of the head and tail tickets
 disappears for the single producer and single consumer configurations
 keeping in mind that these configurations
-will exclude tail in try_pop function.
-The single producer configurations will replace
+would exclude tail in try_pop function.
+The single producer configurations would replace
 the atomic type of the tail ticket with a regular non-atomic type,
-while the single consumer configurations will do the same for the head ticket.
-There exist other issues for the optimization which are discussed
-in the documentation of the corresponding header file.
+while the single consumer configurations would do the same for the head ticket.
 
 **push():**
 1. Increment the tail to obtain the producer ticket:\
@@ -158,7 +154,7 @@ when the consumer ticket reaches the current producer ticket:\
 Having an infinite loop at the top to eliminate spurious failure of the weak CAS:
 1. Load the head to the consumer ticket:\
 `std::size_t consumer_ticket = head.value.load(std::memory_order_acquire);`
-2. Inspect if the queue is empty (an optimization for the empty case):\
+2. Inspect if the queue is empty (an optimization for the empty queue):\
 `if (consumer_ticket == tail.value.load(std::memory_order_acquire)) return std::nullopt;`
 3. Inspect if the slot is **EMPTY** for this consumer ticket:\
 `if (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1) return false;`
@@ -175,15 +171,19 @@ when the producer reaches the next round of this consumer ticket:\
 8. return data;
 
 ### 2.1.5. Progress <a id='sec215'></a>
-The original algorithm (liblfds) is based on Dmitry Vyukov's lock-free queue and is not lock-free
-as is discussed in this [thread](https://stackoverflow.com/a/54755605).
+The **queue of liblfds library** is based on **Dmitry Vyukov's** lock-free queue but
+is not lock-free as is discussed in this [thread](https://stackoverflow.com/a/54755605).
 
-The original library blocks the head and tail pointers and the associated threads
+The liblfds queue blocks the head and tail pointers and the associated threads
 until the ticket requirement defined by **FULL** and **EMPTY** rules is satisfied.
-In other words, while a threads is blocked waiting for its reserved slot,
+While a thread is blocked waiting for its reserved slot,
 the other threads are also blocked as the head and tail pointers
 are only advanced when the thread achieves to satisfy the ticket condition.
-In summary push function of the original algorithm is as follows:
+In other words, threads are fully serialized and
+only one can execute and the others are blocked.
+In summary, the liblfds queue has no lock-freedom (even not obstruct-free).
+
+The push function of the liblfds queue is as follows:
 
 ```
 producer_ticket = tail.load()
@@ -195,7 +195,17 @@ Push the data
 slot._expected_ticket.store(producer_ticket + 1);
 ```
 
-My push function:
+As explained above, the producers are all blocked until
+the slot is ready for push (i.e. **EMPTY**) and the producer succeeds the CAS operation.
+This blocking algorithm is choosen to satisfy **the stcict temporal FIFO**.
+The producers push one-by-one and the consumers pop one-by-one.
+
+On the other hand, in my design,
+the FIFO invariant is relaxed to provide the FIFO order **only logically**
+such that the producers and consumers walk through an ordered buffer of slots.
+As the temporal FIFO is excluded, the head and tail pointers can be advanced freely.
+Hence, the CAS operation used by the queue of liblfds
+can safely be replaced by a fetch_add operation:
 
 ```
 producer_ticket = tail.fetch_add();
@@ -204,27 +214,14 @@ Push the data
 slot._expected_ticket.store(producer_ticket + 1);
 ```
 
-The difference between the two algorithms is:
-- liblfds advances the tail pointer when the two conditions are satisfied:\
-`IF producer_ticket == slot._expected_ticket.load()`\
-`IF tail.CAS succeeds`
-- My push function advances the tail pointer non-conditionally.
+This design implies a producer is blocked waiting for the corresponding consumer
+to finish popping the data from the slot.
+The pop function is symmetric such that
+the consumer is blocked waiting for the corresponding producer to finish publishing the data.
 
-liblfds blocks all threads when one stalls
-due to this conditional pointer advance.
-The reason behind this conditional pointer advance is
-to keep the **FIFO** order **temporally safe**.
-The thread coming first shall write/read first.
-However, here in this design, the two pointers always advance.
-Hence, the FIFO order is preserved **only logically but not temporally**.
-A producer thread (PT1) arriving earlier may be blocked and write later
-than another producer (PT2) arriving later.
-Correspondingly, the data of PT2 will be read before that of PT1.
-This is SAME AS [moodycamel::ConcurrentQueue](https://github.com/cameron314/concurrentqueue.git).
-
-liblfds follows the basic invariant of the queue data structure loosing the lock-freedom.
-However, advancing the head or tail pointers unconditionally
-provides lock-freedom but does not preserve the FIFO order.
+The relaxed FIFO ordering is a common way of achieving the lock-freedom.
+[moodycamel::ConcurrentQueue](https://github.com/cameron314/concurrentqueue.git)
+follows a similar approach with a couple of optimization details.
 
 ### 2.1.6. Notes <a id='sec216'></a>
 1. Memory orders are chosen to
@@ -242,7 +239,7 @@ before setting the expected state accordingly.
 to get the right specialization of Concurrent_Queue and
 to achieve the default arguments consistently.
 3. As stated in the Progress section, 
-this version does not preserve the FIFO order.
+this version does not preserve the FIFO order temporally.
 
 ### 2.1.8. TODO <a id='sec218'></a>
 1. The blocking operations (push and pop) back-pressures
