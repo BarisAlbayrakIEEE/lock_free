@@ -232,11 +232,8 @@ release data before the visibility of the state transitions and
 to acquire data after observing the state transitions.
 2. push back-pressures when the queue is full by spinning on its reserved slot while
 pop back-pressures when the queue is empty by spinning on its reserved slot.
-3. The optimizations for single producer/consumer configurations
-can be found in the following header files:\
-[MPSC](queue_LF_ring_MPSC.hpp)\
-[SPMC](queue_LF_ring_SPMC.hpp)\
-[SPSC](queue_LF_ring_SPSC.hpp)
+3. This design supports the MPMC configuration and
+can be optimized for single producer/consumer configurations: MPSC, SPMC and SPSC.
 
 ### 2.1.7. Cautions <a id='sec217'></a>
 1. Threads may spin indefinitely if a counterpart thread fails mid-operation,
