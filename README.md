@@ -267,9 +267,9 @@ Follows the classical algorithm for the push:
 3. Apply CAS on the head: CAS(new_node->head, new_node)
 
 **pop():**\
-The classical pop routine is tuned to reclaim the memory of the old head under the protection of a hazard pointer:
+The classical pop routine is tuned for the memory reclamation under the protection of hazard pointers:
 1. Protect the head node by a hazard pointer
-2. Apply CAS on the head: CAS(head, head->next)
+2. Apply CAS on the head: `CAS(head, head->next)`
 3. Move the data out from the old head node
 4. Clear the hazard pointer
 5. Add the old head to the reclaim list
