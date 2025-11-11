@@ -10,7 +10,7 @@
     - [2.1.6. Notes](#sec216)
     - [2.1.7. Cautions](#sec217)
     - [2.1.8. TODO](#sec218)
-  - [2.2. Concurrent_Stack_LF_Linked_Hazard_MPMC](#sec22)
+  - [2.2. Concurrent_Stack_LF_Linked_MPSC](#sec22)
     - [2.2.1. Description](#sec221)
     - [2.2.2. Requirements](#sec222)
     - [2.2.3. Invariants](#sec223)
@@ -19,6 +19,15 @@
     - [2.2.6. Notes](#sec226)
     - [2.2.7. Cautions](#sec227)
     - [2.2.8. TODO](#sec228)
+  - [2.3. Concurrent_Stack_LF_Linked_Hazard_MPMC](#sec23)
+    - [2.3.1. Description](#sec231)
+    - [2.3.2. Requirements](#sec232)
+    - [2.3.3. Invariants](#sec233)
+    - [2.3.4. Semantics](#sec234)
+    - [2.3.5. Progress](#sec235)
+    - [2.3.6. Notes](#sec236)
+    - [2.3.7. Cautions](#sec237)
+    - [2.3.8. TODO](#sec238)
 
 **PREFACE**\
 I created this repository as a reference for my job applications.
@@ -32,10 +41,11 @@ The lock-free concurrency is one of the major topics especially in low-latency a
 The two fundamental data structures are studied alot in this respect: queue and stack.
 
 In this repository, I will cover simple designs for the following configurations:
-- A ring buffer lock-free queue with ticket-based synchronization satisfying only the **logical FIFO**,
-- A link-based lock-free stack with a user defined allocator and hazard pointers for the memory reclamation,
-- A link-based lock-free stack with a user defined allocator and read-copy-update (RCU) reclamation for the memory,
-- A link-based lock-free stack with a user defined allocator and interval-based reclamation (IBR) for the memory.
+- A ring buffer MPMC lock-free queue with ticket-based synchronization satisfying only the **logical FIFO**,
+- A link-based MPSC lock-free stack with a user defined allocator,
+- A link-based MPMC lock-free stack with a user defined allocator and hazard pointers for the memory reclamation,
+- A link-based MPMC lock-free stack with a user defined allocator and read-copy-update (RCU) reclamation for the memory,
+- A link-based MPMC lock-free stack with a user defined allocator and interval-based reclamation (IBR) for the memory.
 
 All designs support the MPMC scenario.
 
@@ -244,7 +254,7 @@ An exponential backoff strategy is required for these blocking operations.
 2. Similar to the 1st one, the edge cases (empty queue and full queue)
 requires an exponential backoff strategy as well.
 
-## 2.2. Concurrent_Stack_LF_Linked_Hazard_MPMC <a id='sec22'></a>
+## 2.2. Concurrent_Stack_LF_Linked_MPSC <a id='sec22'></a>
 
 ### 2.2.1. Description <a id='sec221'></a>
 Pop operation needs to reclaim the memory for the head node.
@@ -312,4 +322,93 @@ the list of headers for lock-free/linked solutions are:
 to get the right specialization of Concurrent_Stack and to achieve the default arguments consistently.
 
 ### 2.2.8. TODO <a id='sec228'></a>
+1. Consider exponential backoff for the head node in order to deal with the high CAS contention on the head.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 2.3. Concurrent_Stack_LF_Linked_Hazard_MPMC <a id='sec23'></a>
+
+### 2.3.1. Description <a id='sec231'></a>
+Pop operation needs to reclaim the memory for the head node.
+However, the other consumer threads working on the same head
+would have dangling pointers if the memory reclaim is not synchronized.
+Hazard pointers solve this issue by protecting the registered object.
+The memory can be reclaimed only when there exists no assigned hazard pointer.
+
+### 2.3.2. Requirements <a id='sec232'></a>
+- T must be noexcept-movable.
+
+### 2.3.3. Invariants <a id='sec233'></a>
+Strict LIFO
+
+### 2.3.4. Semantics <a id='sec234'></a>
+**push():**\
+Follows the classical algorithm for the push:
+1. Create a new node.
+2. Set the next pointer of the new node to the current head.
+3. Apply CAS on the head: CAS(new_node->head, new_node)
+
+**pop():**\
+The classical pop routine is tuned for the memory reclamation under the protection of hazard pointers:
+1. Protect the head node by a hazard pointer
+2. Apply CAS on the head: `CAS(head, head->next)`
+3. Move the data out from the old head node
+4. Clear the hazard pointer
+5. Add the old head to the reclaim list
+6. Return the data
+
+See the documentation of Hazard_Ptr.hpp for the details about the hazard pointers.
+
+### 2.3.5. Progress <a id='sec235'></a>
+Strictly lock-free execution as the threads serializing on the head node
+are bound to functions (push and pop) with constant time complexity, O(1).
+
+### 2.3.6. Notes <a id='sec236'></a>
+1. Memory orders are chosen to
+release data before the visibility of the state transitions and
+to acquire data after observing the state transitions.
+
+### 2.3.7. Cautions <a id='sec237'></a>
+1. In case of a single producer (i.e. SPMC and SPSC),
+the competition between the single producer and the consumer(s) remain
+which means that the synchronization between the counterparts is still required.
+On the other hand, single consumer configuration is special
+and is explained in the next caution.
+As the single producer configuration has no effect on this design,
+I will use the same specialization for the following two configurations: MPMC and SPMC
+2. The hazard pointers synchronize the memory reclamation
+(i.e. the race condition related to the head pointer destruction at the end of a pop).
+The race condition disappears when there exists a single consumer.
+Hence, the usage of hazard pointers is
+limited to the SPMC and MPMC configurations and
+the repository lacks headers for
+lock-free/linked/hazard solutions with SPSC and MPSC configurations.
+For these two configurations refer to lock-free/linked solutions instead.
+Together with Caution 1,
+the list of headers for lock-free/linked solutions are:
+- Concurrent_Stack_LF_Linked_MPSC.hpp                     // same as Concurrent_Stack_LF_Linked_SPSC
+- Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp              // same as Concurrent_Stack_LF_Linked_SPMC
+- Concurrent_Stack_LF_Linked_XX_MPMC.hpp (e.g. ref_count)
+- Concurrent_Stack_LF_Linked_XX_SPMC.hpp (e.g. ref_count)
+3. use stack_LF_Linked_MPMC and stack_LF_Linked_SPMC aliases at the end of this file
+to get the right specialization of Concurrent_Stack and to achieve the default arguments consistently.
+
+### 2.3.8. TODO <a id='sec238'></a>
 1. Consider exponential backoff for the head node in order to deal with the high CAS contention on the head.
