@@ -251,9 +251,10 @@ requires an exponential backoff strategy as well.
 ## 2.2. Concurrent_Stack_LF_Linked_MPSC <a id='sec22'></a>
 
 ### 2.2.1. Description <a id='sec221'></a>
-In case of multiple consumers, the pop operation needs to reclaim the memory for the head node.
+In case of multiple consumers, the pop operation needs to reclaim the memory for the head node
+which must be synchronized for the consumer threads.
 See [MPMC](#sec231) for the details.
-Single consumer terminates the need for this synchronization.
+Single consumer configuration does not need this synchronization at all.
 In other words, in case of a single consumer,
 the hazard pointers (or epochs) are not required.
 
