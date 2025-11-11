@@ -220,9 +220,9 @@ to acquire data after observing the state transitions.
 pop back-pressures when the queue is empty by spinning on its reserved slot.
 3. The optimizations for single producer/consumer configurations
 can be found in the following header files:\
-- queue_LF_ring_MPSC.hpp
-- queue_LF_ring_SPMC.hpp
-- queue_LF_ring_SPSC.hpp
+queue_LF_ring_MPSC.hpp\
+queue_LF_ring_SPMC.hpp\
+queue_LF_ring_SPSC.hpp
 
 ### 2.1.7. Cautions <a id='sec217'></a>
 1. Threads may spin indefinitely if a counterpart thread fails mid-operation,
