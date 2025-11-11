@@ -29,15 +29,15 @@
 //     are bound to functions (push and pop) with constant time complexity, O(1).
 //
 // Cautions:
-//   1. In case of a single producer (i.e. SPMC and SPSC),
-//      the competition between the single producer and the consumer(s) remain
+//   1. In case of a single producer (i.e. SPSC),
+//      the competition between the single producer and the consumer remain
 //      which means that the synchronization between the counterparts is still required.
 //      On the other hand, single consumer configuration is special
 //      and is explained in the 2nd caution of the main documentation of:
 //        Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp.
 //      As the single producer configuration has no effect on this design,
 //      I will use the same specialization for the following two configurations:
-//        MPSC and SPMC
+//        MPSC and SPSC
 //      
 //      See the two aliases at the end:
 //        stack_LF_linked_MPSC
