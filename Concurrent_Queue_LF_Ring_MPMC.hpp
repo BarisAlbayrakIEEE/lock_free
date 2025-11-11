@@ -1,4 +1,11 @@
 // Concurrent_Queue_LF_Ring_MPMC.hpp
+// 
+// CAUTION:
+//   I created this repository as a reference for my job applications.
+//   The code given in this repository is:
+//     - to introduce my experience with lock-free concurrency, atomic operations and the required C++ utilities,
+//     - to present my background with the concurrent data structures,
+//     - not to provide a tested production-ready multi-platform library.
 //
 // Description:
 //   The ticket-based ring buffer solution for the lock-free/ring/MPMC queue problem:
