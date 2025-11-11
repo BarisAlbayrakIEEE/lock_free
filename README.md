@@ -61,7 +61,7 @@ that allow managing the slot states.
 The state invariants are as follows:
 1. For a **FULL** slot (i.e. contains published data) the following equality shall hold:\
 `slot._expected_ticket == producer_ticket`
-2. For an **EMPTY** slot (i.e. does not contain data) the following equality shall hold:\
+2. For an **EMPTY** slot (i.e. data is popped successfuly) the following equality shall hold:\
 `slot._expected_ticket == consumer_ticket + 1`
 
 ### 2.1.4. Semantics <a id='sec214'></a>
@@ -184,10 +184,10 @@ slot._expected_ticket.store(producer_ticket + 1);
 My push function:
 
 ```
-producer_ticket = tail.fetch_add();`
-while(!slot._expected_ticket.load() != producer_ticket);`
-Push the data`
-slot._expected_ticket.store(producer_ticket + 1);`
+producer_ticket = tail.fetch_add();
+while(!slot._expected_ticket.load() != producer_ticket);
+Push the data
+slot._expected_ticket.store(producer_ticket + 1);
 ```
 
 The difference between the two algorithms is:

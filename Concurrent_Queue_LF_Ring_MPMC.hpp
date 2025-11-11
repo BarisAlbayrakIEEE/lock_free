@@ -22,7 +22,7 @@
 //   The state invariants are as follows:
 //     1. For a FULL slot (i.e. contains published data) the following equality shall hold:
 //        slot._expected_ticket == producer_ticket
-//     2. For an EMPTY slot (i.e. does not contain data) the following equality shall hold:
+//     2. For an EMPTY slot (i.e. data is popped successfuly) the following equality shall hold:
 //        slot._expected_ticket == consumer_ticket + 1
 //
 // Semantics:
