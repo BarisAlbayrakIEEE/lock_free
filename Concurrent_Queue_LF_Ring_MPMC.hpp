@@ -1,4 +1,4 @@
-// Concurrent_Queue_LF_Ring_NoFIFO_MPMC.hpp
+// Concurrent_Queue_LF_Ring_MPMC.hpp
 //
 // Description:
 //   The ticket-based solution for the lock-free/ring/MPMC queue problem:
@@ -126,7 +126,7 @@
 //     https://stackoverflow.com/a/54755605
 //
 //   The original library blocks the head and tail pointers and the associated threads
-//   until the ticket requirement defined by FULL and EMPTY rulesis satisfied.
+//   until the ticket requirement defined by FULL and EMPTY rules is satisfied.
 //   In other words, while a threads is blocked waiting for its reserved slot,
 //   the other threads are also blocked as the head and tail pointers
 //   are only advanced when the thread achieves to satisfy the ticket condition.
@@ -155,31 +155,19 @@
 //   due to this conditional pointer advance.
 //   The reason behind this conditional pointer advance is
 //   to keep the FIFO order TEMPORALLY SAFE.
-//   The thread coming first shall right first.
+//   The thread coming first shall write/read first.
 //   However, here in this design, the two pointers always advance.
-//   Hence, the FIFO order is not preserved temporally.
+//   Hence, the FIFO order is preserved ONLY LOGICALLY BUT NOT TEMPORARILY.
 //   A producer thread (PT1) arriving earlier may be blocked and write later
 //   than another producer (PT2) arriving later.
 //   Correspondingly, the data of PT2 will be read before that of PT1.
-//   This is a fundamental structural failure for a queue data structure!
+//   This is SAME AS moodycamel::ConcurrentQueue
+//     https://github.com/cameron314/concurrentqueue.git
 //
 //   liblfds follows the basic invariant of the queue data structure
 //   loosing the lock-freedom.
 //   However, advancing the head or tail pointers unconditionally
 //   provides lock-freedom but does not preserve the FIFO order.
-//
-//   A real solution to the problem is to manage the threads such that
-//   when a thread stalls another one can take over its work and finish it.
-//   There are a number of approaches in this respect:
-//     1. 
-//     2. 
-//     3. 
-//     4. 
-//     5. 
-//     6. 
-//     7. 
-//
-//   Concurrent_Queue_LF_Ring_XXX_MPMC.hpp introduces the solution with XXX.
 //
 // Notes:
 //   1. Memory orders are chosen to
@@ -201,8 +189,6 @@
 //      and to achieve the default arguments consistently.
 //   3. As stated in the Progress section, 
 //      this version does not preserve the FIFO order.
-//      See Concurrent_Queue_LF_Ring_XXX_MPMC.hpp
-//      for a solution based on XXX approach.
 //
 // TODOs:
 //   1. The blocking operations (push and pop) back-pressures
