@@ -45,9 +45,9 @@ The design is similar with the following libraries:
 - liblfds unbounded MPMC queue
 
 ### 2.1.1. Description <a id='sec211'></a>
-Synchronizes the two atomic tickets, _head and _tail,
+Synchronizes the two atomic tickets, head and tail,
 in order to synchronize the producers and consumers.
-The tickets locate the _head and _tail pointer of the queue
+The tickets locate the head and tail pointer of the queue
 while effectively managing the states of each slot (**FULL** or **EMPTY**).
 
 ### 2.1.2. Requirements <a id='sec212'></a>
@@ -56,7 +56,7 @@ while effectively managing the states of each slot (**FULL** or **EMPTY**).
 
 ### 2.1.3. Invariants <a id='sec213'></a>
 Producers and consumers shall hold the state invariant.
-See the definitions of _head and _tail members for the tickets
+See the definitions of head and tail members for the tickets
 that allow managing the slot states.
 The state invariants are as follows:
 1. For a **FULL** slot (i.e. contains published data) the following equality shall hold:\
@@ -75,31 +75,31 @@ which flexibly defines the state of the slot as **FULL** or **EMPTY**.
 The threads are completely isolated by the well aligned slots (no false sharing)
 such that each thread works on a different slot at any time.
 This is provided by the ticket approach.
-The producers rely on the shared _tail ticket
-while the consumers use the _head ticket.
-Hence, the only contention is on the _head and _tail tickets
+The producers rely on the shared tail ticket
+while the consumers use the head ticket.
+Hence, the only contention is on the head and tail tickets
 among the producers and consumers respectively.
-The producer threads serialize at _tail while
-the consumers serialize at _head.
+The producer threads serialize at tail while
+the consumers serialize at head.
 The only exception is try_pop method
-which loads _tail for an optimization for the empty-queue edge case.
+which loads tail for an optimization for the empty-queue edge case.
 See the Cautions section below which states that
-the single consumer configurations exclude the use of _tail ticket
-in order to optimize the _tail synchronization.
+the single consumer configurations exclude the use of tail ticket
+in order to optimize the tail synchronization.
 
-The shared use of the _head and _tail tickets
+The shared use of the head and tail tickets
 disappears for the single producer and single consumer configurations
 keeping in mind that these configurations
-will exclude _tail in try_pop function.
+will exclude tail in try_pop function.
 The single producer configurations will replace
-the atomic type of the _tail ticket with a regular non-atomic type,
-while the single consumer configurations will do the same for the _head ticket.
+the atomic type of the tail ticket with a regular non-atomic type,
+while the single consumer configurations will do the same for the head ticket.
 There exist other issues for the optimization which are discussed
 in the documentation of the corresponding header file.
 
 **push():**
-1. Increment the _tail to obtain the producer ticket:\
-`const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);`
+1. Increment the tail to obtain the producer ticket:\
+`const std::size_t producer_ticket = tail.value.fetch_add(1, std::memory_order_acq_rel);`
 2. Wait until the slot expects the obtained producer ticket:\
 `while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);`
 3. The slot is owned now. push the data:\
@@ -110,8 +110,8 @@ when the consumer ticket reaches the current producer ticket:\
 `slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);`
 
 **pop():**
-1. Increment the _head to obtain the consumer ticket:\
-`std::size_t consumer_ticket = _head.value.fetch_add(1, std::memory_order_acq_rel);`
+1. Increment the head to obtain the consumer ticket:\
+`std::size_t consumer_ticket = head.value.fetch_add(1, std::memory_order_acq_rel);`
 2. Wait until the slot expects the obtained consumer ticket:\
 `while (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1);`
 3. The slot is owned now. pop the data:\
@@ -126,12 +126,12 @@ when the producer reaches the next round of this consumer ticket:\
 
 **try_push():**\
 Having an infinite loop at the top to eliminate spurious failure of the weak CAS:
-1. Load the _tail to the producer ticket:\
-`std::size_t producer_ticket = _tail.value.load(std::memory_order_acquire);`
+1. Load the tail to the producer ticket:\
+`std::size_t producer_ticket = tail.value.load(std::memory_order_acquire);`
 2. Inspect if the slot is **FULL** for this producer ticket:\
 `if (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket) return false;`
-3. Weak CAS the _tail to get the ownership of the slot:\
-`if (!_tail.value.compare_exchange_strong(producer_ticket, producer_ticket + 1,...)) continue;`
+3. Weak CAS the tail to get the ownership of the slot:\
+`if (!tail.value.compare_exchange_strong(producer_ticket, producer_ticket + 1,...)) continue;`
 4. The slot is owned now, push the data:\
 `::new (slot.to_ptr()) T(std::forward<U>(data));`
 5. Publish the data by marking it as **FULL** (`expected_ticket = consumer_ticket + 1`).
@@ -142,14 +142,14 @@ when the consumer ticket reaches the current producer ticket:\
 
 **try_pop():**\
 Having an infinite loop at the top to eliminate spurious failure of the weak CAS:
-1. Load the _head to the consumer ticket:\
-`std::size_t consumer_ticket = _head.value.load(std::memory_order_acquire);`
+1. Load the head to the consumer ticket:\
+`std::size_t consumer_ticket = head.value.load(std::memory_order_acquire);`
 2. Inspect if the queue is empty (an optimization for the empty case):\
-`if (consumer_ticket == _tail.value.load(std::memory_order_acquire)) return std::nullopt;`
+`if (consumer_ticket == tail.value.load(std::memory_order_acquire)) return std::nullopt;`
 3. Inspect if the slot is **EMPTY** for this consumer ticket:\
 `if (slot._expected_ticket.load(std::memory_order_acquire) != consumer_ticket + 1) return false;`
-4. Weak CAS the _head to get the ownership of the slot:\
-`if (!_head.value.compare_exchange_strong(consumer_ticket, consumer_ticket + 1,...)) continue;`
+4. Weak CAS the head to get the ownership of the slot:\
+`if (!head.value.compare_exchange_strong(consumer_ticket, consumer_ticket + 1,...)) continue;`
 5. The slot is owned now, pop the data:\
 `T* ptr = slot.to_ptr(); std::optional<T> data{ std::move(*ptr) };`
 6. If not trivially destructible, call the T's destructor:\
@@ -164,18 +164,18 @@ when the producer reaches the next round of this consumer ticket:\
 The original algorithm (liblfds) is based on Dmitry Vyukov's lock-free queue and is not lock-free
 as is discussed in this [thread](https://stackoverflow.com/a/54755605).
 
-The original library blocks the _head and _tail pointers and the associated threads
+The original library blocks the head and tail pointers and the associated threads
 until the ticket requirement defined by **FULL** and **EMPTY** rules is satisfied.
 In other words, while a threads is blocked waiting for its reserved slot,
-the other threads are also blocked as the _head and _tail pointers
+the other threads are also blocked as the head and tail pointers
 are only advanced when the thread achieves to satisfy the ticket condition.
 In summary push function of the original algorithm is as follows:
 
 ```
-producer_ticket = _tail.load()
+producer_ticket = tail.load()
 INFINITE LOOP
   IF producer_ticket == slot._expected_ticket.load()
-    IF _tail.CAS(producer_ticket, producer_ticket + 1)
+    IF tail.CAS(producer_ticket, producer_ticket + 1)
       BREAK
 Push the data
 slot._expected_ticket.store(producer_ticket + 1);
@@ -184,17 +184,17 @@ slot._expected_ticket.store(producer_ticket + 1);
 My push function:
 
 ```
-producer_ticket = _tail.fetch_add();`
+producer_ticket = tail.fetch_add();`
 while(!slot._expected_ticket.load() != producer_ticket);`
 Push the data`
 slot._expected_ticket.store(producer_ticket + 1);`
 ```
 
 The difference between the two algorithms is:
-- liblfds advances the _tail pointer when the two conditions are satisfied:\
+- liblfds advances the tail pointer when the two conditions are satisfied:\
 `IF producer_ticket == slot._expected_ticket.load()`\
-`IF _tail.CAS succeeds`
-- My push function advances the _tail pointer non-conditionally.
+`IF tail.CAS succeeds`
+- My push function advances the tail pointer non-conditionally.
 
 liblfds blocks all threads when one stalls
 due to this conditional pointer advance.
@@ -209,7 +209,7 @@ Correspondingly, the data of PT2 will be read before that of PT1.
 This is SAME AS [moodycamel::ConcurrentQueue](https://github.com/cameron314/concurrentqueue.git).
 
 liblfds follows the basic invariant of the queue data structure loosing the lock-freedom.
-However, advancing the _head or _tail pointers unconditionally
+However, advancing the head or tail pointers unconditionally
 provides lock-freedom but does not preserve the FIFO order.
 
 ### 2.1.6. Notes <a id='sec216'></a>
