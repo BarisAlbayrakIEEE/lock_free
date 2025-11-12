@@ -95,7 +95,8 @@ A slot encapsulates two members:
 2. The expected ticket of the slot
 which flexibly defines the state of the slot as **FULL** or **EMPTY**.
 
-The use of byte array as a storage allows multiple threads to work on the buffer concurrently.
+The use of byte array as a storage allows multiple threads
+to perform construction and destruction on the buffer concurrently.
 
 The threads are completely isolated by the well aligned slots (no false sharing)
 such that each thread works on a different slot at any time.
