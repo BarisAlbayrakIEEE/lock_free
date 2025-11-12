@@ -101,20 +101,15 @@ to perform construction and destruction on the buffer concurrently.
 The threads are completely isolated by the well aligned slots (no false sharing)
 such that each thread works on a different slot at any time.
 This is provided by the ticket approach.
-The producers rely on the shared tail ticket
-while the consumers use the head ticket.
+The producers rely on the shared tail ticket while the consumers use the head ticket.
 Hence, the only contention is on the head and tail tickets
 among the producers and consumers respectively.
-The only exception is try_pop method
-which loads tail for an optimization for the empty-queue edge case.
-See the Cautions section below which states that
-the single consumer configurations exclude the use of tail ticket in try_pop function
-in order to optimize the tail synchronization.
+The only exception is try_pop method which loads tail for an optimization for the empty-queue edge case.
+In order to optimize the tail synchronization,
+the single consumer configurations exclude the use of tail ticket in try_pop function.
 
-The shared use of the head and tail tickets
-disappears for the single producer and single consumer configurations
-keeping in mind that these configurations
-would exclude tail in try_pop function.
+The shared use of the head and tail tickets disappears for the single producer and single consumer configurations
+keeping in mind that these configurations would exclude tail in try_pop function.
 The single producer configurations would replace
 the atomic type of the tail ticket with a regular non-atomic type,
 while the single consumer configurations would do the same for the head ticket.
