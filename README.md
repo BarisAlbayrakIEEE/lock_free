@@ -88,7 +88,7 @@ The state invariants are as follows:
 The enqueue and dequeue functions are based on these two invariants.
 
 ### 2.1.4. Semantics <a id='sec214'></a>
-**Slot class:**
+**Slots**\
 The ring buffer is a contiguous array of Slot objects.
 A slot encapsulates two members:
 1. The data is stored in a byte array of size of T.
