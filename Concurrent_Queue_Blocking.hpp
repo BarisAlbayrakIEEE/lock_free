@@ -11,11 +11,7 @@
 #include "enum_concurrency_models.hpp"
 
 namespace BA_Concurrency {
-    template <
-        typename T>
-    requires (
-            std::is_nothrow_constructible_v<T> &&
-            std::is_nothrow_move_constructible_v<T>)
+    template <typename T>
     class Concurrent_Queue<
         false,
         Enum_Structure_Types::Linked,
