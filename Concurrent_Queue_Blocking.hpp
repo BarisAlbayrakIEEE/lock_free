@@ -12,8 +12,7 @@
 
 namespace BA_Concurrency {
     template <
-        typename T,
-        unsigned char Capacity_As_Pow2>
+        typename T>
     requires (
             std::is_nothrow_constructible_v<T> &&
             std::is_nothrow_move_constructible_v<T>)
