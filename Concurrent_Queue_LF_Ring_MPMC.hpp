@@ -217,7 +217,6 @@
 #include "Concurrent_Queue.hpp"
 #include "aux_type_traits.hpp"
 #include "cache_line_wrapper.hpp"
-#include "order_compliances.hpp"
 
 namespace BA_Concurrency {
     // use queue_LF_ring_MPMC alias at the end of this file
@@ -234,8 +233,7 @@ namespace BA_Concurrency {
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::MPMC,
         T,
-        std::integral_constant<unsigned char, Capacity_As_Pow2>,
-        FIFO_None>
+        std::integral_constant<unsigned char, Capacity_As_Pow2>>
     {
         using _CLWA = cache_line_wrapper<std::atomic<std::size_t>>;
         static constexpr std::size_t _CAPACITY = pow2_size<Capacity_As_Pow2>;
@@ -564,8 +562,7 @@ namespace BA_Concurrency {
         Enum_Structure_Types::Static_Ring_Buffer,
         Enum_Concurrency_Models::MPMC,
         T,
-        std::integral_constant<unsigned char, Capacity_As_Pow2>,
-        FIFO_None>;
+        std::integral_constant<unsigned char, Capacity_As_Pow2>>;
 } // namespace BA_Concurrency
 
 #endif // CONCURRENT_QUEUE_LF_RING_MPMC_HPP
