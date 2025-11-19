@@ -59,7 +59,7 @@ namespace BA_Concurrency {
     };
 
     template <typename T>
-    using Blocking_Queue = Concurrent_Queue<
+    using Concurrent_Queue_Blocking = Concurrent_Queue<
         false,
         Enum_Structure_Types::Linked,
         Enum_Concurrency_Models::MPMC,
