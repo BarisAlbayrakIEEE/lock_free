@@ -6,6 +6,7 @@
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include <optional>
 #include "Concurrent_Queue.hpp"
 #include "enum_structure_types.hpp"
 #include "enum_concurrency_models.hpp"
@@ -18,29 +19,29 @@ namespace BA_Concurrency {
         Enum_Concurrency_Models::MPMC,
         T> {
     public:
-        void push(T value) {
+    template <typename U = T>
+        void push(U&& data) {
             {
-                std::unique_lock lock(_mtx);
-                _queue.push(std::move(value));
+                std::unique_lock lk(_m);
+                _queue.push(std::forward<U>(data));
             }
             _cv.notify_one();
         }
 
-        T pop() {
-            std::unique_lock lock(_mtx);
-            _cv.wait(lock, [&]{ return !_queue.empty() || _stopped; });
-
+        std::optional<T> pop() {
+            std::unique_lock lk(_m);
+            _cv.wait(lk, [&]{ return !_queue.empty() || _stopped; });
             if (_stopped && _queue.empty())
                 return {};
 
-            T v = std::move(_queue.front());
+            T data = std::move(_queue.front());
             _queue.pop();
-            return v;
+            return data;
         }
 
         void stop() {
             {
-                std::unique_lock lock(_mtx);
+                std::unique_lock lk(_m);
                 _stopped = true;
             }
             _cv.notify_all();
@@ -48,7 +49,7 @@ namespace BA_Concurrency {
 
     private:
         std::queue<T> _queue;
-        std::mutex _mtx;
+        std::mutex _m;
         std::condition_variable _cv;
         bool _stopped = false;
     };
