@@ -167,7 +167,7 @@
 //   Hence, the FIFO order is preserved ONLY LOGICALLY BUT NOT TEMPORARILY.
 //   A producer thread (PT1) arriving earlier may be blocked and write later
 //   than another producer (PT2) arriving later.
-//   Correspondingly, the data of PT2 will be read before that of PT1.
+//   Correspondingly, the data of PT2 may be read before that of PT1.
 //   This is SAME AS moodycamel::ConcurrentQueue
 //     https://github.com/cameron314/concurrentqueue.git
 //
