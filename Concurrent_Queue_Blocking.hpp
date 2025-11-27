@@ -6,7 +6,7 @@
 #include <queue>
 #include <mutex>
 #include <condition_variable>
-#include <optional>
+#include "IConcurrent_Queue.hpp"
 #include "Concurrent_Queue.hpp"
 #include "enum_structure_types.hpp"
 #include "enum_concurrency_models.hpp"
@@ -17,21 +17,19 @@ namespace BA_Concurrency {
         false,
         Enum_Structure_Types::Linked,
         Enum_Concurrency_Models::MPMC,
-        T> {
+        T> : public IConcurrent_Queue<T> {
     public:
-    template <typename U = T>
-        void push(U&& data) {
-            {
-                std::unique_lock lk(_m);
-                _queue.push(std::forward<U>(data));
-            }
-            _cv.notify_one();
+        inline void push(const T& data) override {
+            push_helper(data);
+        }
+        inline void push(T&& data) override {
+            push_helper(std::move(data));
         }
 
-        std::optional<T> pop() {
+        std::optional<T> pop() override {
             std::unique_lock lk(_m);
             _cv.wait(lk, [&]{ return !_queue.empty() || _stopped; });
-            if (_stopped && _queue.empty())
+            if (_queue.empty())
                 return {};
 
             T data = std::move(_queue.front());
@@ -39,7 +37,17 @@ namespace BA_Concurrency {
             return data;
         }
 
-        void stop() {
+        std::optional<T> try_pop() override {
+            std::unique_lock lk(_m);
+            if (_queue.empty())
+                return {};
+
+            T data = std::move(_queue.front());
+            _queue.pop();
+            return data;
+        }
+
+        inline void stop() {
             {
                 std::unique_lock lk(_m);
                 _stopped = true;
@@ -48,6 +56,16 @@ namespace BA_Concurrency {
         }
 
     private:
+
+        template <typename U = T>
+        inline void push_helper(U&& data) {
+            {
+                std::unique_lock lk(_m);
+                _queue.push(std::forward<U>(data));
+            }
+            _cv.notify_one();
+        }
+
         std::queue<T> _queue;
         std::mutex _m;
         std::condition_variable _cv;

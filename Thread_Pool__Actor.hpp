@@ -1,7 +1,7 @@
-// Thread_Pool__Actor.h
+// Thread_Pool__Actor.hpp
 
-#ifndef WORKER_POOL__ACTOR_HPP
-#define WORKER_POOL__ACTOR_HPP
+#ifndef THREAD_POOL__ACTOR_HPP
+#define THREAD_POOL__ACTOR_HPP
 
 #include "IThread_Pool.hpp"
 #include "Concurrent_Queue_LF_Ring_MPSC.hpp"
@@ -16,7 +16,7 @@ namespace BA_Concurrency {
     using msg_t = std::function<void(Actor_Ref)>;
     using mailbox_t = queue_LF_ring_MPSC<msg_t, Capacity_As_Pow2>;
 
-    class Actor_Ref : public IThread_Pool {
+    class Actor_Ref {
         friend class Thread_Pool__Actor;
     public:
         Actor_Ref() : _id(SIZE_MAX), _mailboxs(nullptr) {}
@@ -44,11 +44,11 @@ namespace BA_Concurrency {
         std::vector<mailbox_t>* _mailboxs;
     };
 
-    class Thread_Pool__Actor {
+    class Thread_Pool__Actor : public IThread_Pool {
     public:
-        explicit Thread_Pool__Actor(size_t thread_count) {
-            if (thread_count == 0) thread_count = 1;
-
+        explicit Thread_Pool__Actor(size_t thread_count = std::thread::hardware_concurrency())
+            : _thread_count(thread_count == 0 ? 1 : thread_count)
+        {
             _mailboxs.resize(thread_count);
             _actor_refs.reserve(thread_count);
             for (size_t i = 0; i < thread_count; ++i)
@@ -65,6 +65,11 @@ namespace BA_Concurrency {
             return _actor_refs[i];
         }
 
+        void submit(std::function<void()> job) override {
+            size_t id = _next.fetch_add(1, std::memory_order_relaxed) % _mailboxs.size();
+            _mailboxs[id].push(msg_t( { job(); }));
+        }
+
         template <typename F>
             requires std::invocable<F, Actor_Ref>
         inline void submit(F&& f) {
@@ -77,6 +82,10 @@ namespace BA_Concurrency {
             if (!_running.compare_exchange_strong(expected, false))
                 return;
             for (auto& t : _workers) if (t.joinable()) t.join();
+        }
+
+        inline size_t get_thread_count() const override {
+            return _thread_count;
         }
 
     private:
@@ -93,9 +102,10 @@ namespace BA_Concurrency {
         std::vector<mailbox_t> _mailboxs;    
         std::vector<Actor_Ref> _actor_refs;
         std::vector<std::thread> _workers;
+        size_t _thread_count{};
         std::atomic<size_t> _next{0};
         std::atomic<bool> _running{true};
     };
 }
 
-#endif // WORKER_POOL__ACTOR_HPP
+#endif // THREAD_POOL__ACTOR_HPP

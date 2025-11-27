@@ -1,7 +1,7 @@
 // Thread_Pool__Work_Stealing.hpp
 
-#ifndef WORKER_POOL__WORK_STEALING_HPP
-#define WORKER_POOL__WORK_STEALING_HPP
+#ifndef THREAD_POOL__WORK_STEALING_HPP
+#define THREAD_POOL__WORK_STEALING_HPP
 
 #include "IThread_Pool.hpp"
 #include <deque>
@@ -25,7 +25,7 @@ namespace BA_Concurrency {
 
         Thread_Pool__Work_Stealing(
             size_t thread_count = std::thread::hardware_concurrency())
-            : _jds(thread_count)
+            : _thread_count(thread_count == 0 ? 1 : thread_count), _jds(thread_count)
         {
             for (size_t i = 0; i < thread_count; ++i)
                 _threads.emplace_back([this, i] { worker_loop(i); });
@@ -35,8 +35,18 @@ namespace BA_Concurrency {
             if (_running) shutdown();
         }
 
-        template <typename F, typename... Args>
-        auto submit(F&& f, Args&&... args)
+        void submit(std::function<void()> job) override {
+            auto task = std::make_shared<std::packaged_task<void()>>();
+            size_t id = _next.fetch_add(1, std::memory_order_relaxed) % _jds.size();
+            auto& jd = _jds[id];
+            {
+                std::scoped_lock lk(jd._m);
+                jd._jd.push_back(std::move([task]() { (*task)(); }));
+            }
+        }
+
+        template<typename F, typename... Args>
+        auto submit_any(F&& f, Args&&... args)
             -> std::future<std::invoke_result_t<F, Args...>>
         {
             using R = std::invoke_result_t<F, Args...>;
@@ -59,6 +69,10 @@ namespace BA_Concurrency {
                 return;
             for (auto& jd : _jds) std::scoped_lock lk(jd._m);
             for (auto& t : _threads) if (t.joinable()) t.join();
+        }
+
+        inline size_t get_thread_count() const override {
+            return _thread_count;
         }
 
     private:
@@ -108,9 +122,10 @@ namespace BA_Concurrency {
 
         std::vector<Job_Deque> _jds;
         std::vector<std::thread> _threads;
+        size_t _thread_count{};
         std::atomic<size_t> _next{0};
         std::atomic<bool> _running{true};
     };
 } // namespace BA_Concurrency
 
-#endif // WORKER_POOL__WORK_STEALING_HPP
+#endif // THREAD_POOL__WORK_STEALING_HPP

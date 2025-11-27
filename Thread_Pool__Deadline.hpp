@@ -1,7 +1,7 @@
-// Thread_Pool__Deadlineh
+// Thread_Pool__Deadline.hpp
 
-#ifndef WORKER_POOL__DEADLINE_HPP
-#define WORKER_POOL__DEADLINE_HPP
+#ifndef THREAD_POOL__DEADLINE_HPP
+#define THREAD_POOL__DEADLINE_HPP
 
 #include "IThread_Pool.hpp"
 #include <queue>
@@ -28,6 +28,7 @@ namespace BA_Concurrency {
 
         explicit Thread_Pool__Deadline(
             size_t thread_count = std::thread::hardware_concurrency())
+                : _thread_count(thread_count == 0 ? 1 : thread_count)
         {
             for (size_t i = 0; i < thread_count; ++i)
                 _threads.emplace_back([this] { worker_loop(); });
@@ -53,6 +54,10 @@ namespace BA_Concurrency {
             for (auto& t : _threads) t.join();
         }
 
+        inline size_t get_thread_count() const override {
+            return _thread_count;
+        }
+
     private:
 
         void worker_loop() {
@@ -72,10 +77,11 @@ namespace BA_Concurrency {
 
         std::priority_queue<Deadline_Job, std::vector<Deadline_Job>, std::greater<>> _djs;
         std::vector<std::thread> _threads;
+        size_t _thread_count{};
         std::condition_variable _cv;
         std::mutex _m;
         std::atomic<bool> _running{true};
     };
 } // namespace BA_Concurrency
 
-#endif // WORKER_POOL__DEADLINE_HPP
+#endif // THREAD_POOL__DEADLINE_HPP

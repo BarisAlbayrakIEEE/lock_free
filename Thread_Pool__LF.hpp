@@ -1,7 +1,7 @@
-// Thread_Pool__LFh
+// Thread_Pool__LF.hpp
 
-#ifndef WORKER_POOL__LF_HPP
-#define WORKER_POOL__LF_HPP
+#ifndef THREAD_POOL__LF_HPP
+#define THREAD_POOL__LF_HPP
 
 #include "IThread_Pool.hpp"
 #include "Concurrent_Queue_LF_Ring_MPMC.hpp"
@@ -17,6 +17,7 @@ namespace BA_Concurrency {
     public:
         explicit Thread_Pool__LF(
             size_t thread_count = std::thread::hardware_concurrency())
+                : _thread_count(thread_count == 0 ? 1 : thread_count)
         {
             for (size_t i = 0; i < thread_count; ++i) {
                 _threads.emplace_back([this] {
@@ -46,11 +47,16 @@ namespace BA_Concurrency {
             for (auto& t : _threads) t.join();
         }
 
+        inline size_t get_thread_count() const override {
+            return _thread_count;
+        }
+
     private:
         jobs_t _jobs;
         std::vector<std::thread> _threads;
+        size_t _thread_count{};
         std::atomic<bool> _running{true};
     };
 } // namespace BA_Concurrency
 
-#endif // WORKER_POOL__LF_HPP
+#endif // THREAD_POOL__LF_HPP

@@ -1,7 +1,7 @@
-// Thread_Pool__NUMA_Awareh
+// Thread_Pool__NUMA_Aware.hpp
 
-#ifndef WORKER_POOL__NUMA_AWARE_HPP
-#define WORKER_POOL__NUMA_AWARE_HPP
+#ifndef THREAD_POOL__NUMA_AWARE_HPP
+#define THREAD_POOL__NUMA_AWARE_HPP
 
 #include "IThread_Pool.hpp"
 #include "Concurrent_Queue_Blocking.hpp"
@@ -16,12 +16,14 @@ namespace BA_Concurrency {
         using job_t = std::function<void()>;
     public:
         explicit Thread_Pool__NUMA_Aware(size_t thread_count_per_node = 2) {
-            size_t nodes = std::thread::hardware_concurrency() / thread_count_per_node;
-            if (nodes == 0) nodes = 1;
+            size_t thread_count_per_node_ = thread_count_per_node == 0 ? 1 : thread_count_per_node;
+            size_t node_count = std::thread::hardware_concurrency() / thread_count_per_node_;
+            if (node_count == 0) node_count = 1;
+            _thread_count = node_count * thread_count_per_node_;
 
-            _jobs.resize(nodes);
-            for (size_t n = 0; n < nodes; ++n) {
-                for (size_t t = 0; t < thread_count_per_node; ++t) {
+            _jobs.resize(node_count);
+            for (size_t n = 0; n < node_count; ++n) {
+                for (size_t t = 0; t < thread_count_per_node_; ++t) {
                     _threads.emplace_back([this, n] {
                         pin_to_numa_node(n);
                         auto& q = _jobs[n];
@@ -49,6 +51,10 @@ namespace BA_Concurrency {
             for (auto& q : _jobs) q.stop();
             for (auto& t : _threads) t.join();
         }
+
+        inline size_t get_thread_count() const override {
+            return _thread_count;
+        }
         
     private:
 
@@ -61,9 +67,10 @@ namespace BA_Concurrency {
 
         std::vector<Concurrent_Queue_Blocking<job_t>> _jobs;
         std::vector<std::thread> _threads;
+        size_t _thread_count{};
         std::atomic<size_t> _next{0};
         std::atomic<bool> _running{true};
     };
 } // namespace BA_Concurrency
 
-#endif // WORKER_POOL__NUMA_AWARE_HPP
+#endif // THREAD_POOL__NUMA_AWARE_HPP

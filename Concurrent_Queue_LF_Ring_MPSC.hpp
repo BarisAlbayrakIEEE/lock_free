@@ -21,6 +21,7 @@
 #include <optional>
 #include <type_traits>
 #include <utility>
+#include "IConcurrent_Queue.hpp"
 #include "Concurrent_Queue.hpp"
 #include "aux_type_traits.hpp"
 #include "cache_line_wrapper.hpp"
@@ -41,6 +42,7 @@ namespace BA_Concurrency {
         Enum_Concurrency_Models::MPSC,
         T,
         std::integral_constant<unsigned char, Capacity_As_Pow2>>
+        : public IConcurrent_Queue<T>
     {
         using _CLWN = cache_line_wrapper<std::size_t>;
         using _CLWA = cache_line_wrapper<std::atomic<std::size_t>>;
@@ -96,23 +98,12 @@ namespace BA_Concurrency {
         Concurrent_Queue(Concurrent_Queue&&) = delete;
         Concurrent_Queue& operator=(Concurrent_Queue&&) = delete;
 
-        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
-        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
-        // is the non-atomic head ticket.
-        template <class U>
-        void push(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
-            // Step 1
-            const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);
-            Slot& slot = _slots[producer_ticket & _MASK];
-
-            // Step 2
-            while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
-
-            // Step 3
-            ::new (slot.to_ptr()) T(std::forward<U>(data));
-
-            // Step 4
-            slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
+        // see the documentation of push_helper
+        inline void push(const T& data) override {
+            push_helper(data);
+        }
+        inline void push(T&& data) override {
+            push_helper(std::move(data));
         }
 
         // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
@@ -217,6 +208,27 @@ namespace BA_Concurrency {
         }
 
         std::size_t capacity() const noexcept { return _CAPACITY; }
+
+    private:
+
+        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
+        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
+        // is the non-atomic head ticket.
+        template <class U>
+        void push_helper(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
+            // Step 1
+            const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);
+            Slot& slot = _slots[producer_ticket & _MASK];
+
+            // Step 2
+            while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
+
+            // Step 3
+            ::new (slot.to_ptr()) T(std::forward<U>(data));
+
+            // Step 4
+            slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
+        }
     };
 
     template <

@@ -1,7 +1,7 @@
 // IThread_Pool.hpp
 
-#ifndef IWORKER_POOL_HPP
-#define IWORKER_POOL_HPP
+#ifndef ITHREAD_POOL_HPP
+#define ITHREAD_POOL_HPP
 
 #include <functional>
 
@@ -10,9 +10,10 @@ namespace BA_Concurrency {
     public:
         virtual ~IThread_Pool() = default;
 
-        virtual void submit(std::function<void()> job) = 0;
+        virtual void submit(std::function<void()>) = 0;
         virtual void shutdown() = 0;
+        virtual size_t get_thread_count() const = 0;
     };
 } // namespace BA_Concurrency
 
-#endif // IWORKER_POOL_HPP
+#endif // ITHREAD_POOL_HPP
