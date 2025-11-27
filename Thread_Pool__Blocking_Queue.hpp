@@ -46,7 +46,6 @@ namespace BA_Concurrency {
         inline void shutdown() override {
             if (bool expected{true}; !_running.compare_exchange_strong(expected, false))
                 return;
-            _jobs.stop();
             for (auto& t : _threads) t.join();
         }
 
