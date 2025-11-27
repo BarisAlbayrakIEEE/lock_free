@@ -26,9 +26,9 @@ namespace BA_Concurrency {
             push_helper(std::move(data));
         }
 
-        std::optional<T> pop() override {
+        inline std::optional<T> pop() override {
             std::unique_lock lk(_m);
-            _cv.wait(lk, [&]{ return !_queue.empty() || _stopped; });
+            _cv.wait(lk, [&]{ return !_queue.empty(); });
             if (_queue.empty())
                 return {};
 
@@ -37,7 +37,7 @@ namespace BA_Concurrency {
             return data;
         }
 
-        std::optional<T> try_pop() override {
+        inline std::optional<T> try_pop() override {
             std::unique_lock lk(_m);
             if (_queue.empty())
                 return {};
@@ -47,12 +47,13 @@ namespace BA_Concurrency {
             return data;
         }
 
-        inline void stop() {
+        inline size_t size() const noexcept override {
+            size_t size_{};
             {
                 std::unique_lock lk(_m);
-                _stopped = true;
+                size_ = _queue.size();
             }
-            _cv.notify_all();
+            return size_;
         }
 
     private:
@@ -69,7 +70,6 @@ namespace BA_Concurrency {
         std::queue<T> _queue;
         std::mutex _m;
         std::condition_variable _cv;
-        bool _stopped = false;
     };
 
     template <typename T>

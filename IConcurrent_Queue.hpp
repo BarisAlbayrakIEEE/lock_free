@@ -15,6 +15,7 @@ namespace BA_Concurrency {
         virtual void push(const T& data) = 0;
         virtual std::optional<T> pop() = 0;
         virtual std::optional<T> try_pop() = 0;
+        virtual size_t size() const = 0;
     };
 } // namespace BA_Concurrency
 

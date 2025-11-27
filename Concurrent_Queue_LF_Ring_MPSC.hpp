@@ -58,13 +58,6 @@ namespace BA_Concurrency {
             T* to_ptr() noexcept { return std::launder(reinterpret_cast<T*>(_data)); }
         };
 
-        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
-        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
-        // is the non-atomic head ticket.
-        _CLWN _head{0}; // next ticket to pop
-        _CLWA _tail{0}; // next ticket to push
-        Slot _slots[_CAPACITY];
-
     public:
 
         // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
@@ -127,6 +120,9 @@ namespace BA_Concurrency {
             // Step 5
             slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
 
+            // decrement the size
+            --_size;
+
             // Step 6
             return data;
         }
@@ -159,6 +155,9 @@ namespace BA_Concurrency {
 
                 // Step 5
                 slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
+
+                // increment the size
+                ++_size;
 
                 // Step 6
                 return true;
@@ -196,9 +195,16 @@ namespace BA_Concurrency {
                 // Step 7
                 slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
 
+                // decrement the size
+                --_size;
+
                 // Step 8
                 return data;
             }
+        }
+
+        size_t size() const override noexcept {
+            return _size.load();
         }
 
         bool empty() const noexcept {
@@ -228,7 +234,18 @@ namespace BA_Concurrency {
 
             // Step 4
             slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
+
+            // increment the size
+            ++_size;
         }
+
+        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
+        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
+        // is the non-atomic head ticket.
+        _CLWN _head{0}; // next ticket to pop
+        _CLWA _tail{0}; // next ticket to push
+        Slot _slots[_CAPACITY];
+        std::atomic<size_t> _size{0};
     };
 
     template <

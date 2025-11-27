@@ -254,34 +254,6 @@ namespace BA_Concurrency {
             T* to_ptr() noexcept { return std::launder(reinterpret_cast<T*>(_data)); }
         };
 
-        // The monotonic (only incrementation is allowed) tickets: _head and _tail.
-        // The tickets simulates the _head and _tail pointers of the queue data structure.
-        // Here, additionally, they semantically act like a state flag
-        // which infers if a slot is FULL or EMPTY.
-        // Hence, this is a stateful queue design
-        // which requires the state invariants to be hold at any time.
-        // The tickets exceeds the capacity of the buffer
-        // as they increments monotonically.
-        // Hence, to achieve the index of a slot, a modulo operation is required.
-        // _MASK constant allows performing the modulo operation efficiently
-        // using a bitwise mask operation.
-        // The state invariants are as follows:
-        //   1. For a FULL slot (i.e. contains published data) the following equality shall hold:
-        //      slot._expected_ticket == producer_ticket
-        //   2. For an EMPTY slot (i.e. does not contain data) the following equality shall hold:
-        //      slot._expected_ticket == consumer_ticket + 1
-        //
-        // This is a flexible state management strategy.
-        // For example, for the FIFO to be achieved,
-        // a popped slot shall be ready for pushing
-        // only when the next round of the slot is reached.
-        // We can achieve this condition easily by
-        // setting the expected ticket of the slot to the ticket of the next round:
-        //   slot._expected_ticket = consumer_ticket + _CAPACITY
-        _CLWA _head{0}; // next ticket to pop
-        _CLWA _tail{0}; // next ticket to push
-        Slot _slots[_CAPACITY];
-
     public:
 
         // Initialize each slot to expect its index as the first producer ticket
@@ -365,6 +337,9 @@ namespace BA_Concurrency {
             // Step 5
             slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
 
+            // decrement the size
+            --_size;
+
             // Step 6
             return data;
         }
@@ -426,6 +401,9 @@ namespace BA_Concurrency {
 
                 // Step 5
                 slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
+
+                // increment the size
+                ++_size;
 
                 // Step 6
                 return true;
@@ -510,15 +488,20 @@ namespace BA_Concurrency {
                 // Step 7
                 slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);
 
+                // decrement the size
+                --_size;
+
                 // Step 8
                 return data;
             }
         }
 
+        size_t size() const override noexcept {
+            return _size.load();
+        }
+
         bool empty() const noexcept {
-            return
-                _head.value.load(std::memory_order_acquire) ==
-                _tail.value.load(std::memory_order_acquire);
+            return _size.load() == 0;
         }
 
         std::size_t capacity() const noexcept { return _CAPACITY; }
@@ -563,7 +546,40 @@ namespace BA_Concurrency {
 
             // Step 4
             slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
+
+            // increment the size
+            ++_size;
         }
+
+        // MEMBERS:
+        // The monotonic (only incrementation is allowed) tickets: _head and _tail.
+        // The tickets simulates the _head and _tail pointers of the queue data structure.
+        // Here, additionally, they semantically act like a state flag
+        // which infers if a slot is FULL or EMPTY.
+        // Hence, this is a stateful queue design
+        // which requires the state invariants to be hold at any time.
+        // The tickets exceeds the capacity of the buffer
+        // as they increments monotonically.
+        // Hence, to achieve the index of a slot, a modulo operation is required.
+        // _MASK constant allows performing the modulo operation efficiently
+        // using a bitwise mask operation.
+        // The state invariants are as follows:
+        //   1. For a FULL slot (i.e. contains published data) the following equality shall hold:
+        //      slot._expected_ticket == producer_ticket
+        //   2. For an EMPTY slot (i.e. does not contain data) the following equality shall hold:
+        //      slot._expected_ticket == consumer_ticket + 1
+        //
+        // This is a flexible state management strategy.
+        // For example, for the FIFO to be achieved,
+        // a popped slot shall be ready for pushing
+        // only when the next round of the slot is reached.
+        // We can achieve this condition easily by
+        // setting the expected ticket of the slot to the ticket of the next round:
+        //   slot._expected_ticket = consumer_ticket + _CAPACITY
+        _CLWA _head{0}; // next ticket to pop
+        _CLWA _tail{0}; // next ticket to push
+        Slot _slots[_CAPACITY];
+        std::atomic<size_t> _size{0};
     };
 
     template <
