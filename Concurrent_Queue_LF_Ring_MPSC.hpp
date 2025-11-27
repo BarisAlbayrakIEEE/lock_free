@@ -91,12 +91,25 @@ namespace BA_Concurrency {
         Concurrent_Queue(Concurrent_Queue&&) = delete;
         Concurrent_Queue& operator=(Concurrent_Queue&&) = delete;
 
-        // see the documentation of push_helper
-        inline void push(const T& data) override {
-            push_helper(data);
-        }
-        inline void push(T&& data) override {
-            push_helper(std::move(data));
+        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
+        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
+        // is the non-atomic head ticket.
+        void push_helper(T data) noexcept(std::is_nothrow_constructible_v<T>) {
+            // Step 1
+            const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);
+            Slot& slot = _slots[producer_ticket & _MASK];
+
+            // Step 2
+            while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
+
+            // Step 3
+            ::new (slot.to_ptr()) T(std::move(data));
+
+            // Step 4
+            slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
+
+            // increment the size
+            ++_size;
         }
 
         // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
@@ -216,28 +229,6 @@ namespace BA_Concurrency {
         std::size_t capacity() const noexcept { return _CAPACITY; }
 
     private:
-
-        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
-        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
-        // is the non-atomic head ticket.
-        template <class U>
-        void push_helper(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
-            // Step 1
-            const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);
-            Slot& slot = _slots[producer_ticket & _MASK];
-
-            // Step 2
-            while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
-
-            // Step 3
-            ::new (slot.to_ptr()) T(std::forward<U>(data));
-
-            // Step 4
-            slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
-
-            // increment the size
-            ++_size;
-        }
 
         // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
         // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp

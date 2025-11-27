@@ -284,12 +284,46 @@ namespace BA_Concurrency {
         Concurrent_Queue(Concurrent_Queue&&) = delete;
         Concurrent_Queue& operator=(Concurrent_Queue&&) = delete;
 
-        // see the documentation of push_helper
-        inline void push(const T& data) override {
-            push_helper(data);
-        }
-        inline void push(T&& data) override {
-            push_helper(std::move(data));
+        // Blocking enqueue: busy-wait while FULL at reservation time.
+        //
+        // Operation steps:
+        //   1. Increment the _tail to obtain the producer ticket:
+        //      const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);
+        //   2. Wait until the slot expects the obtained producer ticket:
+        //      while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
+        //   3. The slot is owned now. push the data:
+        //      ::new (slot.to_ptr()) T(std::forward<U>(data));
+        //   4. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
+        //      Notice that, the FULL condition will be satisfied
+        //      when the consumer ticket reaches the current producer ticket:
+        //      slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
+        //
+        // Notes:
+        //   1. This producer function does not share data with the consumers
+        //      which is a significant detail for the optimization of
+        //      the single producer configurations (SPMC and SPSC).
+        //   2. Back-pressures when the queue is full by spinning on its reserved slot.
+        //   3. If stalls, only its reserved slot delays
+        //      but does not block others from operating on the other slots.
+        //   4. The ABA problem is solved by the monotonous _tail ticket.
+        //      See the definitions of FULL and EMPTY
+        //      given with the definition of _head and _tail members.
+        void push(T data) noexcept(std::is_nothrow_constructible_v<T>) {
+            // Step 1
+            const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);
+            Slot& slot = _slots[producer_ticket & _MASK];
+
+            // Step 2
+            while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
+
+            // Step 3
+            ::new (slot.to_ptr()) T(std::move(data));
+
+            // Step 4
+            slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
+
+            // increment the size
+            ++_size;
         }
 
         // Blocking dequeue: busy-wait while EMPTY at reservation time.
@@ -507,49 +541,6 @@ namespace BA_Concurrency {
         std::size_t capacity() const noexcept { return _CAPACITY; }
 
     private:
-
-        // Blocking enqueue: busy-wait while FULL at reservation time.
-        //
-        // Operation steps:
-        //   1. Increment the _tail to obtain the producer ticket:
-        //      const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);
-        //   2. Wait until the slot expects the obtained producer ticket:
-        //      while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
-        //   3. The slot is owned now. push the data:
-        //      ::new (slot.to_ptr()) T(std::forward<U>(data));
-        //   4. Publish the data by marking it as FULL (expected_ticket = consumer_ticket + 1)
-        //      Notice that, the FULL condition will be satisfied
-        //      when the consumer ticket reaches the current producer ticket:
-        //      slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
-        //
-        // Notes:
-        //   1. This producer function does not share data with the consumers
-        //      which is a significant detail for the optimization of
-        //      the single producer configurations (SPMC and SPSC).
-        //   2. Back-pressures when the queue is full by spinning on its reserved slot.
-        //   3. If stalls, only its reserved slot delays
-        //      but does not block others from operating on the other slots.
-        //   4. The ABA problem is solved by the monotonous _tail ticket.
-        //      See the definitions of FULL and EMPTY
-        //      given with the definition of _head and _tail members.
-        template <class U>
-        void push_helper(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
-            // Step 1
-            const std::size_t producer_ticket = _tail.value.fetch_add(1, std::memory_order_acq_rel);
-            Slot& slot = _slots[producer_ticket & _MASK];
-
-            // Step 2
-            while (slot._expected_ticket.load(std::memory_order_acquire) != producer_ticket);
-
-            // Step 3
-            ::new (slot.to_ptr()) T(std::forward<U>(data));
-
-            // Step 4
-            slot._expected_ticket.store(producer_ticket + 1, std::memory_order_release);
-
-            // increment the size
-            ++_size;
-        }
 
         // MEMBERS:
         // The monotonic (only incrementation is allowed) tickets: _head and _tail.

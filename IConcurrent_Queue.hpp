@@ -11,8 +11,7 @@ namespace BA_Concurrency {
     public:
         virtual ~IConcurrent_Queue() = default;
 
-        virtual void push(T&& data) = 0;
-        virtual void push(const T& data) = 0;
+        virtual void push(T data) = 0;
         virtual std::optional<T> pop() = 0;
         virtual std::optional<T> try_pop() = 0;
         virtual size_t size() const = 0;

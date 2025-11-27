@@ -6,6 +6,7 @@
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include <type_traits>
 #include "IConcurrent_Queue.hpp"
 #include "Concurrent_Queue.hpp"
 #include "enum_structure_types.hpp"
@@ -19,11 +20,12 @@ namespace BA_Concurrency {
         Enum_Concurrency_Models::MPMC,
         T> : public IConcurrent_Queue<T> {
     public:
-        inline void push(const T& data) override {
-            push_helper(data);
-        }
-        inline void push(T&& data) override {
-            push_helper(std::move(data));
+        inline void push(T data) override {
+            {
+                std::unique_lock lk(_m);
+                _queue.push(std::move(data));
+            }
+            _cv.notify_one();
         }
 
         inline std::optional<T> pop() override {
@@ -57,18 +59,8 @@ namespace BA_Concurrency {
         }
 
     private:
-
-        template <typename U = T>
-        inline void push_helper(U&& data) {
-            {
-                std::unique_lock lk(_m);
-                _queue.push(std::forward<U>(data));
-            }
-            _cv.notify_one();
-        }
-
         std::queue<T> _queue;
-        std::mutex _m;
+        mutable std::mutex _m;
         std::condition_variable _cv;
     };
 
