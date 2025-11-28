@@ -47,16 +47,26 @@ Hence, I will use a linked list while designing the stack data structure.
 I will use the ring buffer for the queue as it is very efficient for the FIFO ordering.
 
 In this repository, I will cover simple designs for the following configurations:
+- A very simple link-based lock-based blocking queue,
 - A ring buffer MPMC lock-free queue with ticket-based synchronization satisfying only the **logical FIFO**,
+- A ring buffer MPSC lock-free queue with ticket-based synchronization satisfying only the **logical FIFO**,
 - A link-based MPSC lock-free stack with a user defined allocator,
 - A link-based MPMC lock-free stack with a user defined allocator and hazard pointers for the memory reclamation,
 - A link-based MPMC lock-free stack with a user defined allocator and read-copy-update (RCU) reclamation for the memory,
 - A link-based MPMC lock-free stack with a user defined allocator and interval-based reclamation (IBR) for the memory.
 
+The repository additionally contains simple designs for the well-known thread pools:
+- blocking,
+- work-stealing,
+- deadline,
+- actor (under construction and buggy),
+- lock-free (under construction),
+- NUMA-aware (under construction).
+
 The repository additionally contains simple designs for the followings:
 - A few type traits,
 - A wrapper class to fit objects to a cache line,
-- An STL style arena working on the static memory,
+- A simple STL style arena working on the static memory,
 - Hazard pointer utilities.
 
 # 2. Design Review <a id='sec2'></a>
