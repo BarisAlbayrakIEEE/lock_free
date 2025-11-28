@@ -1,4 +1,4 @@
-// Concurrent_Queue_LF_Ring_MPMC.hpp
+// Concurrent_Queue__LF_Ring_MPMC.hpp
 // 
 // CAUTION:
 //   I created this repository as a reference for my job applications.
@@ -530,15 +530,15 @@ namespace BA_Concurrency {
             }
         }
 
-        size_t size() const override noexcept {
+        inline size_t size() const noexcept override {
             return _size.load();
         }
 
-        bool empty() const noexcept {
+        inline bool empty() const noexcept override {
             return _size.load() == 0;
         }
 
-        std::size_t capacity() const noexcept { return _CAPACITY; }
+        inline std::size_t capacity() const noexcept { return _CAPACITY; }
 
     private:
 

@@ -4,7 +4,7 @@
 #define THREAD_POOL__ACTOR_HPP
 
 #include "IThread_Pool.hpp"
-#include "Concurrent_Queue_LF_Ring_MPSC.hpp"
+#include "Concurrent_Queue__LF_Ring_MPSC.hpp"
 #include "tp_util.hpp"
 #include <vector>
 #include <thread>
@@ -44,7 +44,7 @@ namespace BA_Concurrency {
         std::vector<mailbox_t>* _mailboxs;
     };
 
-    class Thread_Pool__Actor : public IThread_Pool {
+    class Thread_Pool__Actor {
     public:
         explicit Thread_Pool__Actor(size_t thread_count = std::thread::hardware_concurrency())
             : _thread_count(thread_count == 0 ? 1 : thread_count)
@@ -99,7 +99,7 @@ namespace BA_Concurrency {
             }
         }
 
-        std::vector<mailbox_t> _mailboxs;    
+        std::vector<mailbox_t> _mailboxs;
         std::vector<Actor_Ref> _actor_refs;
         std::vector<std::thread> _workers;
         size_t _thread_count{};

@@ -4,7 +4,7 @@
 #define THREAD_POOL__LF_HPP
 
 #include "IThread_Pool.hpp"
-#include "Concurrent_Queue_LF_Ring_MPMC.hpp"
+#include "Concurrent_Queue__LF_Ring_MPMC.hpp"
 #include "tp_util.hpp"
 #include <vector>
 #include <thread>
@@ -51,11 +51,19 @@ namespace BA_Concurrency {
             return _thread_count;
         }
 
+        inline void wait_all_jobs() override {
+            /*
+            TODO: wait_all_jobs
+            */
+            ;
+        }
+
     private:
         jobs_t _jobs;
         std::vector<std::thread> _threads;
         size_t _thread_count{};
         std::atomic<bool> _running{true};
+        std::atomic<size_t> _jobs_in_progress{0};
     };
 } // namespace BA_Concurrency
 

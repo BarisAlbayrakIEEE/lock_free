@@ -1,4 +1,4 @@
-// Concurrent_Queue_LF_Ring_MPSC.hpp
+// Concurrent_Queue__LF_Ring_MPSC.hpp
 // 
 // CAUTION:
 //   I created this repository as a reference for my job applications.
@@ -9,7 +9,7 @@
 //
 // CAUTION:
 //   Currently contains an initial version based on the discussions
-//   held in Concurrent_Queue_LF_Ring_MPMC.hpp.
+//   held in Concurrent_Queue__LF_Ring_MPMC.hpp.
 
 #ifndef CONCURRENT_QUEUE_LF_RING_MPSC_HPP
 #define CONCURRENT_QUEUE_LF_RING_MPSC_HPP
@@ -49,8 +49,8 @@ namespace BA_Concurrency {
         static constexpr std::size_t _CAPACITY = pow2_size<Capacity_As_Pow2>;
         static constexpr std::size_t _MASK     = _CAPACITY - 1;
 
-        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
-        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
+        // See Concurrent_Queue__LF_Ring_MPMC.hpp for the descriptions
+        // Notice that currently the only difference with Concurrent_Queue__LF_Ring_MPMC.hpp
         // is the non-atomic head ticket.
         struct alignas(64) Slot {
             std::atomic<std::size_t> _expected_ticket;
@@ -60,8 +60,8 @@ namespace BA_Concurrency {
 
     public:
 
-        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
-        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
+        // See Concurrent_Queue__LF_Ring_MPMC.hpp for the descriptions
+        // Notice that currently the only difference with Concurrent_Queue__LF_Ring_MPMC.hpp
         // is the non-atomic head ticket.
         Concurrent_Queue() noexcept {
             for (std::size_t i = 0; i < _CAPACITY; ++i) {
@@ -69,8 +69,8 @@ namespace BA_Concurrency {
             }
         }
 
-        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
-        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
+        // See Concurrent_Queue__LF_Ring_MPMC.hpp for the descriptions
+        // Notice that currently the only difference with Concurrent_Queue__LF_Ring_MPMC.hpp
         // is the non-atomic head ticket.
         ~Concurrent_Queue() {
             if constexpr (!std::is_trivially_destructible_v<T>) {
@@ -91,8 +91,8 @@ namespace BA_Concurrency {
         Concurrent_Queue(Concurrent_Queue&&) = delete;
         Concurrent_Queue& operator=(Concurrent_Queue&&) = delete;
 
-        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
-        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
+        // See Concurrent_Queue__LF_Ring_MPMC.hpp for the descriptions
+        // Notice that currently the only difference with Concurrent_Queue__LF_Ring_MPMC.hpp
         // is the non-atomic head ticket.
         void push_helper(T data) noexcept(std::is_nothrow_constructible_v<T>) {
             // Step 1
@@ -112,8 +112,8 @@ namespace BA_Concurrency {
             ++_size;
         }
 
-        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
-        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
+        // See Concurrent_Queue__LF_Ring_MPMC.hpp for the descriptions
+        // Notice that currently the only difference with Concurrent_Queue__LF_Ring_MPMC.hpp
         // is the non-atomic head ticket.
         std::optional<T> pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
             // Step 1
@@ -140,8 +140,8 @@ namespace BA_Concurrency {
             return data;
         }
 
-        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
-        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
+        // See Concurrent_Queue__LF_Ring_MPMC.hpp for the descriptions
+        // Notice that currently the only difference with Concurrent_Queue__LF_Ring_MPMC.hpp
         // is the non-atomic head ticket.
         template <class U>
         bool try_push(U&& data) noexcept(std::is_nothrow_constructible_v<T, U&&>) {
@@ -177,8 +177,8 @@ namespace BA_Concurrency {
             }
         }
 
-        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
-        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
+        // See Concurrent_Queue__LF_Ring_MPMC.hpp for the descriptions
+        // Notice that currently the only difference with Concurrent_Queue__LF_Ring_MPMC.hpp
         // is the non-atomic head ticket.
         std::optional<T> try_pop() noexcept(std::is_nothrow_move_constructible_v<T>) {
             // Step 1
@@ -216,22 +216,20 @@ namespace BA_Concurrency {
             }
         }
 
-        size_t size() const override noexcept {
+        inline size_t size() const noexcept override {
             return _size.load();
         }
 
-        bool empty() const noexcept {
-            return
-                _head.value ==
-                _tail.value.load(std::memory_order_acquire);
+        inline bool empty() const noexcept override {
+            return _size.load() == 0;
         }
 
-        std::size_t capacity() const noexcept { return _CAPACITY; }
+        inline std::size_t capacity() const noexcept { return _CAPACITY; }
 
     private:
 
-        // See Concurrent_Queue_LF_Ring_MPMC.hpp for the descriptions
-        // Notice that currently the only difference with Concurrent_Queue_LF_Ring_MPMC.hpp
+        // See Concurrent_Queue__LF_Ring_MPMC.hpp for the descriptions
+        // Notice that currently the only difference with Concurrent_Queue__LF_Ring_MPMC.hpp
         // is the non-atomic head ticket.
         _CLWN _head{0}; // next ticket to pop
         _CLWA _tail{0}; // next ticket to push

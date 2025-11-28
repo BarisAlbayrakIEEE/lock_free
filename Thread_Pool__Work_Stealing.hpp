@@ -75,6 +75,13 @@ namespace BA_Concurrency {
             return _thread_count;
         }
 
+        inline void wait_all_jobs() override {
+            /*
+            TODO: wait_all_jobs
+            */
+            ;
+        }
+
     private:
     
         std::optional<job_t> steal(size_t thief) {

@@ -1,4 +1,4 @@
-// Concurrent_Queue_Blocking.hpp
+// Concurrent_Queue__Blocking.hpp
 
 #ifndef CONCURRENT_QUEUE_BLOCKING_HPP
 #define CONCURRENT_QUEUE_BLOCKING_HPP
@@ -50,12 +50,13 @@ namespace BA_Concurrency {
         }
 
         inline size_t size() const noexcept override {
-            size_t size_{};
-            {
-                std::unique_lock lk(_m);
-                size_ = _queue.size();
-            }
-            return size_;
+            std::unique_lock lk(_m);
+            return _queue.size();
+        }
+
+        inline bool empty() const noexcept override {
+            std::unique_lock lk(_m);
+            return _queue.size() == 0;
         }
 
     private:
@@ -65,7 +66,7 @@ namespace BA_Concurrency {
     };
 
     template <typename T>
-    using Concurrent_Queue_Blocking = Concurrent_Queue<
+    using Concurrent_Queue__Blocking = Concurrent_Queue<
         false,
         Enum_Structure_Types::Linked,
         Enum_Concurrency_Models::MPMC,

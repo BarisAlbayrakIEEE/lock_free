@@ -4,7 +4,7 @@
 #define THREAD_POOL__NUMA_AWARE_HPP
 
 #include "IThread_Pool.hpp"
-#include "Concurrent_Queue_Blocking.hpp"
+#include "Concurrent_Queue__Blocking.hpp"
 #include <thread>
 #include <vector>
 #include <atomic>
@@ -48,12 +48,18 @@ namespace BA_Concurrency {
         inline void shutdown() override {
             if (bool expected{true}; !_running.compare_exchange_strong(expected, false))
                 return;
-            for (auto& q : _jobs) q.stop();
             for (auto& t : _threads) t.join();
         }
 
         inline size_t get_thread_count() const override {
             return _thread_count;
+        }
+
+        inline void wait_all_jobs() override {
+            /*
+            TODO: wait_all_jobs
+            */
+            ;
         }
         
     private:
@@ -65,7 +71,7 @@ namespace BA_Concurrency {
             sched_setaffinity(0, sizeof(set), &set);
         }
 
-        std::vector<Concurrent_Queue_Blocking<job_t>> _jobs;
+        std::vector<Concurrent_Queue__Blocking<job_t>> _jobs;
         std::vector<std::thread> _threads;
         size_t _thread_count{};
         std::atomic<size_t> _next{0};

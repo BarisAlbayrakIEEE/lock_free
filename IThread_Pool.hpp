@@ -13,6 +13,7 @@ namespace BA_Concurrency {
         virtual void submit(std::function<void()>) = 0;
         virtual void shutdown() = 0;
         virtual size_t get_thread_count() const = 0;
+        virtual void wait_all_jobs() = 0;
     };
 } // namespace BA_Concurrency
 

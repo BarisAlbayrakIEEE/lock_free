@@ -1,10 +1,10 @@
-// Thread_Pool__Concurrent_Queue_Blocking.hpp
+// Thread_Pool__Blocking.hpp
 
-#ifndef THREAD_POOL__BLOCKING_QUEUE_HPP
-#define THREAD_POOL__BLOCKING_QUEUE_HPP
+#ifndef THREAD_POOL__BLOCKING_HPP
+#define THREAD_POOL__BLOCKING_HPP
 
 #include "IThread_Pool.hpp"
-#include "Concurrent_Queue_Blocking.hpp"
+#include "Concurrent_Queue__Blocking.hpp"
 #include <vector>
 #include <thread>
 #include <memory>
@@ -12,10 +12,10 @@
 #include <type_traits>
 
 namespace BA_Concurrency {
-    class Thread_Pool__Concurrent_Queue_Blocking : public IThread_Pool {
+    class Thread_Pool__Blocking : public IThread_Pool {
         using job_t = std::function<void()>;
     public:
-        explicit Thread_Pool__Concurrent_Queue_Blocking(
+        explicit Thread_Pool__Blocking(
             size_t thread_count = std::thread::hardware_concurrency())
                 : _thread_count(thread_count == 0 ? 1 : thread_count)
         {
@@ -23,14 +23,16 @@ namespace BA_Concurrency {
                 _threads.emplace_back([this] { worker_loop(); });
         }
 
-        ~Thread_Pool__Concurrent_Queue_Blocking() {
+        ~Thread_Pool__Blocking() {
             if (_running) shutdown();
         }
 
         void submit(std::function<void()> job) override {
             _jobs.push(std::move(job));
+            ++_jobs_in_progress;
         }
 
+        // utility function
         template<typename F, typename... Args>
         auto submit_any(F&& f, Args&&... args) {
             using R = std::invoke_result_t<F, Args...>;
@@ -40,6 +42,7 @@ namespace BA_Concurrency {
             auto fut = task->get_future();
             _jobs.push([task]() { (*task)(); });
 
+            ++_jobs_in_progress;
             return fut;
         }
 
@@ -53,6 +56,11 @@ namespace BA_Concurrency {
             return _thread_count;
         }
 
+        inline void wait_all_jobs() override {
+            std::unique_lock lk(_m);
+            _cv.wait(lk, [&]{ return _jobs_in_progress == 0 && _jobs.empty(); });
+        }
+
     private:
 
         inline void worker_loop() {
@@ -63,14 +71,20 @@ namespace BA_Concurrency {
                     else continue;
                 }
                 job.value()();
+                --_jobs_in_progress;
+                if (_jobs_in_progress == 0)
+                    _cv.notify_all();
             }
         }
 
-        Concurrent_Queue_Blocking<job_t> _jobs;
+        Concurrent_Queue__Blocking<job_t> _jobs;
         std::vector<std::thread> _threads;
         size_t _thread_count{};
+        std::atomic<size_t> _jobs_in_progress{0};
+        std::condition_variable _cv;
+        mutable std::mutex _m;
         std::atomic<bool> _running{true};
     };
 } // namespace BA_Concurrency
 
-#endif // THREAD_POOL__BLOCKING_QUEUE_HPP
+#endif // THREAD_POOL__BLOCKING_HPP
