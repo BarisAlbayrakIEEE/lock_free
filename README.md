@@ -41,8 +41,7 @@ The lock-free concurrency is one of the major topics especially in low-latency a
 The two fundamental data structures are studied a lot in this respect: queue and stack.
 
 In terms of memory layout, the two data structures can use a contiguous buffer or store the elements dynamically.
-In terms of a lock-free design, a stack cannot be designed on top of a ring buffer
-due to the LIFO requirements.
+In terms of a lock-free design, a stack cannot be designed on top of a ring buffer due to the LIFO requirements.
 Hence, I will use a linked list while designing the stack data structure.
 I will use the ring buffer for the queue as it is very efficient for the FIFO ordering.
 
@@ -80,15 +79,14 @@ The design is similar with the following libraries:
 
 ### 2.1.1. Description <a id='sec211'></a>
 Synchronizes the two atomic tickets, **head** and **tail**, in order to synchronize the producers and consumers.
-The tickets locate the head and tail pointer of the queue
-while effectively managing the states of each slot (**FULL** or **EMPTY**).
+The tickets locate the head and tail pointer of the queue while effectively managing the states of each slot (**FULL** or **EMPTY**).
 
 ### 2.1.2. Requirements <a id='sec212'></a>
 - T must be noexcept-constructible.
 - T must be noexcept-movable.
 
 ### 2.1.3. Invariants <a id='sec213'></a>
-This is a stateful queue design where the producers and consumers shall hold the state invariant.
+This is a stateless queue design but acts like a stateful data structure where the producers and consumers shall hold the state invariant.
 The state invariants are as follows:
 1. For a **FULL** slot (i.e. contains published data) the following equality shall hold:\
 `slot._expected_ticket == producer_ticket`
@@ -105,24 +103,17 @@ A slot encapsulates two members:
 2. The expected ticket of the slot
 which flexibly defines the state of the slot as **FULL** or **EMPTY**.
 
-The use of byte array as a storage allows multiple threads
-to perform construction and destruction on the buffer concurrently.
+The use of byte array as a storage allows multiple threads to perform construction and destruction on the buffer concurrently.
 
-The threads are completely isolated by the well aligned slots (no false sharing)
-such that each thread works on a different slot at any time.
+The threads are completely isolated by the well aligned slots (no false sharing) such that each thread works on a different slot at any time.
 This is provided by the ticket approach.
 The producers rely on the shared tail ticket while the consumers use the head ticket.
-Hence, the only contention is on the head and tail tickets
-among the producers and consumers respectively.
+Hence, the only contention is on the head and tail tickets among the producers and consumers respectively.
 The only exception is try_pop method which loads tail for an optimization for the empty-queue edge case.
-In order to optimize the tail synchronization,
-the single consumer configurations exclude the use of tail ticket in try_pop function.
+In order to optimize the tail synchronization, the single consumer configurations exclude the use of tail ticket in try_pop function.
 
-The shared use of the head and tail tickets disappears for the single producer and single consumer configurations
-keeping in mind that these configurations would exclude tail in try_pop function.
-The single producer configurations would replace
-the atomic type of the tail ticket with a regular non-atomic type,
-while the single consumer configurations would do the same for the head ticket.
+The shared use of the head and tail tickets disappears for the single producer and single consumer configurations keeping in mind that these configurations would exclude tail in try_pop function.
+The single producer configurations would replace the atomic type of the tail ticket with a regular non-atomic type, while the single consumer configurations would do the same for the head ticket.
 
 **push():**
 1. Increment the tail to obtain the producer ticket:\
@@ -188,16 +179,11 @@ when the producer reaches the next round of this consumer ticket:\
 8. return data;
 
 ### 2.1.5. Progress <a id='sec215'></a>
-The **queue of liblfds library** is based on **Dmitry Vyukov's** lock-free queue but
-is not lock-free as discussed in this [thread](https://stackoverflow.com/a/54755605).
+The **queue of liblfds library** is based on **Dmitry Vyukov's** lock-free queue but is not lock-free as discussed in this [thread](https://stackoverflow.com/a/54755605).
 
-The liblfds queue blocks the head and tail pointers and the associated threads
-until the ticket requirement defined by **FULL** and **EMPTY** rules is satisfied.
-While a thread is blocked waiting for its reserved slot,
-the other threads are also blocked as the head and tail pointers
-are only advanced when the thread achieves to satisfy the ticket condition.
-In other words, threads are fully serialized and
-only one can execute and the others are blocked.
+The liblfds queue blocks the head and tail pointers and the associated threads until the ticket requirement defined by **FULL** and **EMPTY** rules is satisfied.
+While a thread is blocked waiting for its reserved slot, the other threads are also blocked as the head and tail pointers are only advanced when the thread achieves to satisfy the ticket condition.
+In other words, threads are fully serialized and only one can execute and the others are blocked.
 In summary, the liblfds queue has no lock-freedom (even not obstruct-free).
 
 The push function of the liblfds queue is as follows:
@@ -212,17 +198,13 @@ Push the data
 slot._expected_ticket.store(producer_ticket + 1);
 ```
 
-As explained above, the producers are all blocked until
-the slot is ready for push (i.e. **EMPTY**) and the producer succeeds the CAS operation.
+As explained above, the producers are all blocked until the slot is ready for push (i.e. **EMPTY**) and the producer succeeds the CAS operation.
 This blocking algorithm is choosen to satisfy **the stcict temporal FIFO**.
 The producers push one-by-one and the consumers pop one-by-one.
 
-On the other hand, in my design,
-the FIFO invariant is relaxed to provide the FIFO order **only logically**
-such that the producers and consumers walk through an ordered buffer of slots.
+On the other hand, in my design, the FIFO invariant is relaxed to provide the FIFO order **only logically** such that the producers and consumers walk through an ordered buffer of slots.
 As the temporal FIFO is excluded, the head and tail pointers can be advanced freely.
-Hence, the CAS operation used by the queue of liblfds
-can safely be replaced by a fetch_add operation:
+Hence, the CAS operation used by the queue of liblfds can safely be replaced by a fetch_add operation:
 
 ```
 producer_ticket = tail.fetch_add();
@@ -231,22 +213,16 @@ Push the data
 slot._expected_ticket.store(producer_ticket + 1);
 ```
 
-This design implies a producer is blocked waiting for the corresponding consumer
-to finish popping the data from the slot.
-The pop function is symmetric such that
-the consumer is blocked waiting for the corresponding producer to finish publishing the data.
+This design implies a producer is blocked waiting for the corresponding consumer to finish popping the data from the slot.
+The pop function is symmetric such that the consumer is blocked waiting for the corresponding producer to finish publishing the data.
 
 The relaxed FIFO ordering is a common way of achieving the lock-freedom.
-[moodycamel::ConcurrentQueue](https://github.com/cameron314/concurrentqueue.git)
-follows a similar approach with a couple of optimization details.
+[moodycamel::ConcurrentQueue](https://github.com/cameron314/concurrentqueue.git) follows a similar approach with a couple of optimization details.
 
 ### 2.1.6. Notes <a id='sec216'></a>
-1. Memory orders are chosen to release data before the visibility of the state transitions and
-to acquire data after observing the state transitions.
-2. push back-pressures when the queue is full by spinning on its reserved slot while
-pop back-pressures when the queue is empty by spinning on its reserved slot.
-3. This design supports the MPMC configuration and
-can be optimized for single producer/consumer configurations: MPSC, SPMC and SPSC.
+1. Memory orders are chosen to release data before the visibility of the state transitions and to acquire data after observing the state transitions.
+2. push back-pressures when the queue is full by spinning on its reserved slot while pop back-pressures when the queue is empty by spinning on its reserved slot.
+3. This design supports the MPMC configuration and can be optimized for single producer/consumer configurations: MPSC, SPMC and SPSC.
 
 ### 2.1.7. Cautions <a id='sec217'></a>
 1. Threads may spin indefinitely if a counterpart thread fails mid-operation,
@@ -256,17 +232,14 @@ to get the right specialization of Concurrent_Queue and to achieve the default a
 3. As stated in [Progress](#sec215), this version does not preserve the FIFO order temporally.
 
 ### 2.1.8. TODO <a id='sec218'></a>
-1. The blocking operations (push and pop) back-pressures
-waiting the expected ticket of the reserved slot to satisfy ticket invariants.
+1. The blocking operations (push and pop) back-pressures waiting the expected ticket of the reserved slot to satisfy ticket invariants.
 An exponential backoff strategy is required for these blocking operations.
-2. Similar to the 1st one, the edge cases (empty queue and full queue)
-requires an exponential backoff strategy as well.
+2. Similar to the 1st one, the edge cases (empty queue and full queue) requires an exponential backoff strategy as well.
 
 ## 2.2. Concurrent_Stack_LF_Linked_MPSC <a id='sec22'></a>
 
 ### 2.2.1. Description <a id='sec221'></a>
-In case of multiple consumers, the pop operation needs to reclaim the memory for the head node
-which must be synchronized for the consumer threads.
+In case of multiple consumers, the pop operation needs to reclaim the memory for the head node which must be synchronized for the consumer threads.
 See [MPMC](#sec231) for the details.
 Single consumer configuration does not need this synchronization at all.
 In other words, in case of a single consumer, the hazard pointers (or epochs) are not required.
@@ -292,23 +265,16 @@ The classical pop routine without a need for the synchronized memory reclamation
 4. Return the data
 
 ### 2.2.5. Progress <a id='sec225'></a>
-Strict lock-free execution as the threads serializing on the head node
-are bound to functions (push and pop) with constant time complexity, O(1).
+Strict lock-free execution as the threads serializing on the head node are bound to functions (push and pop) with constant time complexity, O(1).
 
 ### 2.2.6. Notes <a id='sec226'></a>
-Memory orders are chosen to release data before the visibility of the state transitions and
-to acquire data after observing the state transitions.
+Memory orders are chosen to release data before the visibility of the state transitions and to acquire data after observing the state transitions.
 
 ### 2.2.7. Cautions <a id='sec227'></a>
-1. In case of a single producer (i.e. SPSC),
-the competition between the single producer and the consumer remain
-which means that the synchronization between the counterparts is still required.
-On the other hand, single consumer configuration is special
-and is explained in [Concurrent_Stack_LF_Linked_Hazard_MPMC](#sec237).
+1. In case of a single producer (i.e. SPSC), the competition between the single producer and the consumer remain which means that the synchronization between the counterparts is still required.
+On the other hand, single consumer configuration is special and is explained in [Concurrent_Stack_LF_Linked_Hazard_MPMC](#sec237).
 Correspondingly, the following configurations are the asme: MPSC and SPSC.
-2. use stack_LF_Linked_MPSC and stack_LF_Linked_SPSC aliases
-at the end of the [header file](Concurrent_Stack_LF_Linked_MPSC.hpp)
-to get the right specialization of Concurrent_Stack and to achieve the default arguments consistently.
+2. use stack_LF_Linked_MPSC and stack_LF_Linked_SPSC aliases at the end of the [header file](Concurrent_Stack_LF_Linked_MPSC.hpp) to get the right specialization of Concurrent_Stack and to achieve the default arguments consistently.
 
 ### 2.2.8. TODO <a id='sec228'></a>
 The exponential backoff for the head node in order to deal with the high CAS contention on the head.
@@ -317,8 +283,7 @@ The exponential backoff for the head node in order to deal with the high CAS con
 
 ### 2.3.1. Description <a id='sec231'></a>
 Pop operation needs to reclaim the memory for the head node.
-However, the other consumer threads working on the same head
-would have dangling pointers if the memory reclaim is not synchronized.
+However, the other consumer threads working on the same head would have dangling pointers if the memory reclaim is not synchronized.
 Hazard pointers solve this issue by protecting the registered object.
 The memory can be reclaimed only when there exists no assigned hazard pointer.
 
@@ -344,28 +309,20 @@ The classical pop routine is tuned for the memory reclamation under the protecti
 5. Add the old head to the reclaim list
 6. Return the data
 
-See the documentation of the [hazard pointer header](Hazard_Ptr.hpp)
-for the details about the hazard pointers.
+See the documentation of the [hazard pointer header](Hazard_Ptr.hpp) for the details about the hazard pointers.
 
 ### 2.3.5. Progress <a id='sec235'></a>
-Strict lock-free execution as the threads serializing on the head node
-are bound to functions (push and pop) with constant time complexity, O(1).
+Strict lock-free execution as the threads serializing on the head node are bound to functions (push and pop) with constant time complexity, O(1).
 
 ### 2.3.6. Notes <a id='sec236'></a>
-Memory orders are chosen to release data before the visibility of the state transitions and
-to acquire data after observing the state transitions.
+Memory orders are chosen to release data before the visibility of the state transitions and to acquire data after observing the state transitions.
 
 ### 2.3.7. Cautions <a id='sec237'></a>
-1. In case of a single producer (i.e. SPMC and SPSC),
-the competition between the single producer and the consumer(s) remain
-which means that the synchronization between the counterparts is still required.
-On the other hand, the single consumer configuration is special
-and is explained in the next caution.
+1. In case of a single producer (i.e. SPMC and SPSC), the competition between the single producer and the consumer(s) remain which means that the synchronization between the counterparts is still required.
+On the other hand, the single consumer configuration is special and is explained in the next caution.
 As the single producer configuration has no effect on this design,
 I will use the same specialization for the following two configurations: MPMC and SPMC
-2. use stack_LF_Linked_MPMC and stack_LF_Linked_SPMC aliases
-at the end of the [header file](Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp)
-to get the right specialization of Concurrent_Stack and to achieve the default arguments consistently.
+2. use stack_LF_Linked_MPMC and stack_LF_Linked_SPMC aliases at the end of the [header file](Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp) to get the right specialization of Concurrent_Stack and to achieve the default arguments consistently.
 
 ### 2.3.8. TODO <a id='sec238'></a>
 Consider exponential backoff for the head node in order to deal with the high CAS contention on the head.
