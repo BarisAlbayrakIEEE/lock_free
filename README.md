@@ -130,9 +130,9 @@ The repository additionally contains simple designs for the well-known thread po
 - blocking,
 - work-stealing,
 - deadline,
-- actor (under construction and buggy),
 - lock-free (under construction),
 - NUMA-aware (under construction).
+- actor (under construction and buggy),
 
 The repository additionally contains simple designs for the followings:
 - A few type traits,
@@ -535,7 +535,7 @@ TODO
 ### 2.8.8. TODO <a id='sec2088'></a>
 TODO
 
-## 2.9. Thread_Pool__LF <a id='sec209'></a>
+## 2.9. Thread_Pool__LF (under construction) <a id='sec209'></a>
 TODO
 
 ### 2.9.1. Description <a id='sec2091'></a>
@@ -562,7 +562,7 @@ TODO
 ### 2.9.8. TODO <a id='sec2098'></a>
 TODO
 
-## 2.10. Thread_Pool__NUMA_Aware <a id='sec210'></a>
+## 2.10. Thread_Pool__NUMA_Aware (under construction) <a id='sec210'></a>
 TODO
 
 ### 2.10.1. Description <a id='sec2101'></a>
@@ -589,7 +589,7 @@ TODO
 ### 2.10.8. TODO <a id='sec2108'></a>
 TODO
 
-## 2.11. Thread_Pool__Actor <a id='sec211'></a>
+## 2.11. Thread_Pool__Actor (under construction and buggy) <a id='sec211'></a>
 TODO
 
 ### 2.11.1. Description <a id='sec2111'></a>
