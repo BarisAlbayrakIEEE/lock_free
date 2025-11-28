@@ -1,33 +1,105 @@
 **Contents**
 - [1. Introduction](#sec1)
 - [2. Design Review](#sec2)
-  - [2.1. Concurrent_Queue_LF_Ring_MPMC](#sec21)
-    - [2.1.1. Description](#sec211)
-    - [2.1.2. Requirements](#sec212)
-    - [2.1.3. Invariants](#sec213)
-    - [2.1.4. Semantics](#sec214)
-    - [2.1.5. Progress](#sec215)
-    - [2.1.6. Notes](#sec216)
-    - [2.1.7. Cautions](#sec217)
-    - [2.1.8. TODO](#sec218)
-  - [2.2. Concurrent_Stack_LF_Linked_MPSC](#sec22)
-    - [2.2.1. Description](#sec221)
-    - [2.2.2. Requirements](#sec222)
-    - [2.2.3. Invariants](#sec223)
-    - [2.2.4. Semantics](#sec224)
-    - [2.2.5. Progress](#sec225)
-    - [2.2.6. Notes](#sec226)
-    - [2.2.7. Cautions](#sec227)
-    - [2.2.8. TODO](#sec228)
-  - [2.3. Concurrent_Stack_LF_Linked_Hazard_MPMC](#sec23)
-    - [2.3.1. Description](#sec231)
-    - [2.3.2. Requirements](#sec232)
-    - [2.3.3. Invariants](#sec233)
-    - [2.3.4. Semantics](#sec234)
-    - [2.3.5. Progress](#sec235)
-    - [2.3.6. Notes](#sec236)
-    - [2.3.7. Cautions](#sec237)
-    - [2.3.8. TODO](#sec238)
+  - [2.1. Concurrent_Queue__Blocking](#sec201)
+    - [2.1.1. Description](#sec2011)
+    - [2.1.2. Requirements](#sec2012)
+    - [2.1.3. Invariants](#sec2013)
+    - [2.1.4. Semantics](#sec2014)
+    - [2.1.5. Progress](#sec2015)
+    - [2.1.6. Notes](#sec2016)
+    - [2.1.7. Cautions](#sec2017)
+    - [2.1.8. TODO](#sec2018)
+  - [2.2. Concurrent_Queue__LF_Ring_MPMC](#sec202)
+    - [2.2.1. Description](#sec2021)
+    - [2.2.2. Requirements](#sec2022)
+    - [2.2.3. Invariants](#sec2023)
+    - [2.2.4. Semantics](#sec2024)
+    - [2.2.5. Progress](#sec2025)
+    - [2.2.6. Notes](#sec2026)
+    - [2.2.7. Cautions](#sec2027)
+    - [2.2.8. TODO](#sec2028)
+  - [2.3. Concurrent_Queue__LF_Ring_MPSC](#sec203)
+    - [2.3.1. Description](#sec2031)
+    - [2.3.2. Requirements](#sec2032)
+    - [2.3.3. Invariants](#sec2033)
+    - [2.3.4. Semantics](#sec2034)
+    - [2.3.5. Progress](#sec2035)
+    - [2.3.6. Notes](#sec2036)
+    - [2.3.7. Cautions](#sec2037)
+    - [2.3.8. TODO](#sec2038)
+  - [2.4. Concurrent_Stack__LF_Linked_MPSC](#sec204)
+    - [2.4.1. Description](#sec2041)
+    - [2.4.2. Requirements](#sec2042)
+    - [2.4.5. Invariants](#sec2043)
+    - [2.4.4. Semantics](#sec2044)
+    - [2.4.5. Progress](#sec2045)
+    - [2.4.6. Notes](#sec2046)
+    - [2.4.7. Cautions](#sec2047)
+    - [2.4.8. TODO](#sec2048)
+  - [2.5. Concurrent_Stack__LF_Linked_Hazard_MPMC](#sec205)
+    - [2.5.1. Description](#sec2051)
+    - [2.5.2. Requirements](#sec2052)
+    - [2.5.3. Invariants](#sec2053)
+    - [2.5.4. Semantics](#sec2054)
+    - [2.5.5. Progress](#sec2055)
+    - [2.5.6. Notes](#sec2056)
+    - [2.5.7. Cautions](#sec2057)
+    - [2.5.8. TODO](#sec2058)
+  - [2.6. Thread_Pool__Blocking](#sec206)
+    - [2.6.1. Description](#sec2061)
+    - [2.6.2. Requirements](#sec2062)
+    - [2.6.3. Invariants](#sec2063)
+    - [2.6.4. Semantics](#sec2064)
+    - [2.6.5. Progress](#sec2065)
+    - [2.6.6. Notes](#sec2066)
+    - [2.6.7. Cautions](#sec2067)
+    - [2.6.8. TODO](#sec2068)
+  - [2.7. Thread_Pool__Deadline](#sec207)
+    - [2.7.1. Description](#sec2071)
+    - [2.7.2. Requirements](#sec2072)
+    - [2.7.3. Invariants](#sec2073)
+    - [2.7.4. Semantics](#sec2074)
+    - [2.7.5. Progress](#sec2075)
+    - [2.7.6. Notes](#sec2076)
+    - [2.7.7. Cautions](#sec2077)
+    - [2.7.8. TODO](#sec2078)
+  - [2.8. Thread_Pool__Work_Stealing](#sec208)
+    - [2.8.1. Description](#sec2081)
+    - [2.8.2. Requirements](#sec2082)
+    - [2.8.3. Invariants](#sec2083)
+    - [2.8.4. Semantics](#sec2084)
+    - [2.8.5. Progress](#sec2085)
+    - [2.8.6. Notes](#sec2086)
+    - [2.8.7. Cautions](#sec2087)
+    - [2.8.8. TODO](#sec2088)
+  - [2.9. Thread_Pool__LF](#sec209)
+    - [2.9.1. Description](#sec2091)
+    - [2.9.2. Requirements](#sec2092)
+    - [2.9.3. Invariants](#sec2093)
+    - [2.9.4. Semantics](#sec2094)
+    - [2.9.5. Progress](#sec2095)
+    - [2.9.6. Notes](#sec2096)
+    - [2.9.7. Cautions](#sec2097)
+    - [2.9.8. TODO](#sec2098)
+  - [2.10. Thread_Pool__NUMA_Aware](#sec210)
+    - [2.10.1. Description](#sec2101)
+    - [2.10.2. Requirements](#sec2102)
+    - [2.10.3. Invariants](#sec2103)
+    - [2.10.4. Semantics](#sec2104)
+    - [2.10.5. Progress](#sec2105)
+    - [2.10.6. Notes](#sec2106)
+    - [2.10.7. Cautions](#sec2107)
+    - [2.10.8. TODO](#sec2108)
+  - [2.11. Thread_Pool__Actor](#sec211)
+    - [2.11.1. Description](#sec2111)
+    - [2.11.2. Requirements](#sec2112)
+    - [2.11.3. Invariants](#sec2113)
+    - [2.11.4. Semantics](#sec2114)
+    - [2.11.5. Progress](#sec2115)
+    - [2.11.6. Notes](#sec2116)
+    - [2.11.7. Cautions](#sec2117)
+    - [2.11.8. TODO](#sec2118)
 
 **PREFACE**\
 I created this repository as a reference for my job applications.
@@ -70,22 +142,50 @@ The repository additionally contains simple designs for the followings:
 
 # 2. Design Review <a id='sec2'></a>
 
-## 2.1. Concurrent_Queue_LF_Ring_MPMC <a id='sec21'></a>
+## 2.1. Concurrent_Queue__Blocking <a id='sec201'></a>
+Although this is a lock-free library, I included some simple designs for the blocking lock-based architectures only for demonstration.
+This is a wrapper class around a standard queue allowing synchronized concurrent access via the mutual exclusion.
+
+### 2.1.1. Description <a id='sec2011'></a>
+TODO
+
+### 2.1.2. Requirements <a id='sec2012'></a>
+TODO
+
+### 2.1.3. Invariants <a id='sec2013'></a>
+TODO
+
+### 2.1.4. Semantics <a id='sec2014'></a>
+TODO
+
+### 2.1.5. Progress <a id='sec2015'></a>
+TODO
+
+### 2.1.6. Notes <a id='sec2016'></a>
+TODO
+
+### 2.1.7. Cautions <a id='sec2017'></a>
+TODO
+
+### 2.1.8. TODO <a id='sec2018'></a>
+TODO
+
+## 2.2. Concurrent_Queue__LF_Ring_MPMC <a id='sec202'></a>
 This is a ring buffer lock-free queue with ticket-based synchronization satisfying only the **logical FIFO**.
 The design is similar with the following libraries:
 - boost::lock_free::queue
 - moodycamel::ConcurrentQueue
 - liblfds unbounded MPMC queue
 
-### 2.1.1. Description <a id='sec211'></a>
+### 2.2.1. Description <a id='sec2021'></a>
 Synchronizes the two atomic tickets, **head** and **tail**, in order to synchronize the producers and consumers.
 The tickets locate the head and tail pointer of the queue while effectively managing the states of each slot (**FULL** or **EMPTY**).
 
-### 2.1.2. Requirements <a id='sec212'></a>
+### 2.2.2. Requirements <a id='sec2022'></a>
 - T must be noexcept-constructible.
 - T must be noexcept-movable.
 
-### 2.1.3. Invariants <a id='sec213'></a>
+### 2.2.3. Invariants <a id='sec2023'></a>
 This is a stateless queue design but acts like a stateful data structure where the producers and consumers shall hold the state invariant.
 The state invariants are as follows:
 1. For a **FULL** slot (i.e. contains published data) the following equality shall hold:\
@@ -95,7 +195,7 @@ The state invariants are as follows:
 
 The enqueue and dequeue functions are based on these two invariants.
 
-### 2.1.4. Semantics <a id='sec214'></a>
+### 2.2.4. Semantics <a id='sec2024'></a>
 **Slots**\
 The ring buffer is a contiguous array of Slot objects.
 A slot encapsulates two members:
@@ -178,7 +278,7 @@ when the producer reaches the next round of this consumer ticket:\
 `slot._expected_ticket.store(consumer_ticket + _CAPACITY, std::memory_order_release);`
 8. return data;
 
-### 2.1.5. Progress <a id='sec215'></a>
+### 2.2.5. Progress <a id='sec2025'></a>
 The **queue of liblfds library** is based on **Dmitry Vyukov's** lock-free queue but is not lock-free as discussed in this [thread](https://stackoverflow.com/a/54755605).
 
 The liblfds queue blocks the head and tail pointers and the associated threads until the ticket requirement defined by **FULL** and **EMPTY** rules is satisfied.
@@ -219,38 +319,65 @@ The pop function is symmetric such that the consumer is blocked waiting for the 
 The relaxed FIFO ordering is a common way of achieving the lock-freedom.
 [moodycamel::ConcurrentQueue](https://github.com/cameron314/concurrentqueue.git) follows a similar approach with a couple of optimization details.
 
-### 2.1.6. Notes <a id='sec216'></a>
+### 2.2.6. Notes <a id='sec2026'></a>
 1. Memory orders are chosen to release data before the visibility of the state transitions and to acquire data after observing the state transitions.
 2. push back-pressures when the queue is full by spinning on its reserved slot while pop back-pressures when the queue is empty by spinning on its reserved slot.
 3. This design supports the MPMC configuration and can be optimized for single producer/consumer configurations: MPSC, SPMC and SPSC.
 
-### 2.1.7. Cautions <a id='sec217'></a>
+### 2.2.7. Cautions <a id='sec2027'></a>
 1. Threads may spin indefinitely if a counterpart thread fails mid-operation,
 before setting the expected state accordingly.
-2. Use queue_LF_ring_MPMC alias at the end of the [header file](Concurrent_Queue_LF_Ring_MPMC.hpp)
+2. Use queue_LF_ring_MPMC alias at the end of the [header file](Concurrent_Queue__LF_Ring_MPMC.hpp)
 to get the right specialization of Concurrent_Queue and to achieve the default arguments consistently.
-3. As stated in [Progress](#sec215), this version does not preserve the FIFO order temporally.
+3. As stated in [Progress](#sec2025), this version does not preserve the FIFO order temporally.
 
-### 2.1.8. TODO <a id='sec218'></a>
+### 2.2.8. TODO <a id='sec2028'></a>
 1. The blocking operations (push and pop) back-pressures waiting the expected ticket of the reserved slot to satisfy ticket invariants.
 An exponential backoff strategy is required for these blocking operations.
 2. Similar to the 1st one, the edge cases (empty queue and full queue) requires an exponential backoff strategy as well.
 
-## 2.2. Concurrent_Stack_LF_Linked_MPSC <a id='sec22'></a>
+## 2.3. Concurrent_Queue__LF_Ring_MPSC <a id='sec203'></a>
+This is a specialization of the MPMC case for the single consumer configuration.
 
-### 2.2.1. Description <a id='sec221'></a>
+### 2.3.1. Description <a id='sec2031'></a>
+TODO
+
+### 2.3.2. Requirements <a id='sec2032'></a>
+TODO
+
+### 2.3.3. Invariants <a id='sec2033'></a>
+TODO
+
+### 2.3.4. Semantics <a id='sec2034'></a>
+TODO
+
+### 2.3.5. Progress <a id='sec2035'></a>
+TODO
+
+### 2.3.6. Notes <a id='sec2036'></a>
+TODO
+
+### 2.3.7. Cautions <a id='sec2037'></a>
+TODO
+
+### 2.3.8. TODO <a id='sec2038'></a>
+TODO
+
+## 2.4. Concurrent_Stack__LF_Linked_MPSC <a id='sec204'></a>
+
+### 2.4.1. Description <a id='sec2041'></a>
 In case of multiple consumers, the pop operation needs to reclaim the memory for the head node which must be synchronized for the consumer threads.
-See [MPMC](#sec231) for the details.
+See [MPMC](#sec2051) for the details.
 Single consumer configuration does not need this synchronization at all.
 In other words, in case of a single consumer, the hazard pointers (or epochs) are not required.
 
-### 2.2.2. Requirements <a id='sec222'></a>
+### 2.4.2. Requirements <a id='sec2042'></a>
 - T must be noexcept-movable.
 
-### 2.2.3. Invariants <a id='sec223'></a>
+### 2.4.5. Invariants <a id='sec2043'></a>
 Strict LIFO
 
-### 2.2.4. Semantics <a id='sec224'></a>
+### 2.4.4. Semantics <a id='sec2044'></a>
 **push():**\
 Follows the classical algorithm for the push:
 1. Create a new node.
@@ -264,36 +391,36 @@ The classical pop routine without a need for the synchronized memory reclamation
 3. Delete the old head
 4. Return the data
 
-### 2.2.5. Progress <a id='sec225'></a>
+### 2.4.5. Progress <a id='sec2045'></a>
 Strict lock-free execution as the threads serializing on the head node are bound to functions (push and pop) with constant time complexity, O(1).
 
-### 2.2.6. Notes <a id='sec226'></a>
+### 2.4.6. Notes <a id='sec2046'></a>
 Memory orders are chosen to release data before the visibility of the state transitions and to acquire data after observing the state transitions.
 
-### 2.2.7. Cautions <a id='sec227'></a>
+### 2.4.7. Cautions <a id='sec2047'></a>
 1. In case of a single producer (i.e. SPSC), the competition between the single producer and the consumer remain which means that the synchronization between the counterparts is still required.
-On the other hand, single consumer configuration is special and is explained in [Concurrent_Stack_LF_Linked_Hazard_MPMC](#sec237).
+On the other hand, single consumer configuration is special and is explained in [Concurrent_Stack__LF_Linked_Hazard_MPMC](#sec2057).
 Correspondingly, the following configurations are the asme: MPSC and SPSC.
-2. use stack_LF_Linked_MPSC and stack_LF_Linked_SPSC aliases at the end of the [header file](Concurrent_Stack_LF_Linked_MPSC.hpp) to get the right specialization of Concurrent_Stack and to achieve the default arguments consistently.
+2. use stack_LF_Linked_MPSC and stack_LF_Linked_SPSC aliases at the end of the [header file](Concurrent_Stack__LF_Linked_MPSC.hpp) to get the right specialization of Concurrent_Stack and to achieve the default arguments consistently.
 
-### 2.2.8. TODO <a id='sec228'></a>
+### 2.4.8. TODO <a id='sec2048'></a>
 The exponential backoff for the head node in order to deal with the high CAS contention on the head.
 
-## 2.3. Concurrent_Stack_LF_Linked_Hazard_MPMC <a id='sec23'></a>
+## 2.5. Concurrent_Stack__LF_Linked_Hazard_MPMC <a id='sec205'></a>
 
-### 2.3.1. Description <a id='sec231'></a>
+### 2.5.1. Description <a id='sec2051'></a>
 Pop operation needs to reclaim the memory for the head node.
 However, the other consumer threads working on the same head would have dangling pointers if the memory reclaim is not synchronized.
 Hazard pointers solve this issue by protecting the registered object.
 The memory can be reclaimed only when there exists no assigned hazard pointer.
 
-### 2.3.2. Requirements <a id='sec232'></a>
+### 2.5.2. Requirements <a id='sec2052'></a>
 - T must be noexcept-movable.
 
-### 2.3.3. Invariants <a id='sec233'></a>
+### 2.5.3. Invariants <a id='sec2053'></a>
 Strict LIFO
 
-### 2.3.4. Semantics <a id='sec234'></a>
+### 2.5.4. Semantics <a id='sec2054'></a>
 **push():**\
 Follows the classical algorithm for the push:
 1. Create a new node.
@@ -311,18 +438,180 @@ The classical pop routine is tuned for the memory reclamation under the protecti
 
 See the documentation of the [hazard pointer header](Hazard_Ptr.hpp) for the details about the hazard pointers.
 
-### 2.3.5. Progress <a id='sec235'></a>
+### 2.5.5. Progress <a id='sec2055'></a>
 Strict lock-free execution as the threads serializing on the head node are bound to functions (push and pop) with constant time complexity, O(1).
 
-### 2.3.6. Notes <a id='sec236'></a>
+### 2.5.6. Notes <a id='sec2056'></a>
 Memory orders are chosen to release data before the visibility of the state transitions and to acquire data after observing the state transitions.
 
-### 2.3.7. Cautions <a id='sec237'></a>
+### 2.5.7. Cautions <a id='sec2057'></a>
 1. In case of a single producer (i.e. SPMC and SPSC), the competition between the single producer and the consumer(s) remain which means that the synchronization between the counterparts is still required.
 On the other hand, the single consumer configuration is special and is explained in the next caution.
 As the single producer configuration has no effect on this design,
 I will use the same specialization for the following two configurations: MPMC and SPMC
-2. use stack_LF_Linked_MPMC and stack_LF_Linked_SPMC aliases at the end of the [header file](Concurrent_Stack_LF_Linked_Hazard_MPMC.hpp) to get the right specialization of Concurrent_Stack and to achieve the default arguments consistently.
+2. use stack_LF_Linked_MPMC and stack_LF_Linked_SPMC aliases at the end of the [header file](Concurrent_Stack__LF_Linked_Hazard_MPMC.hpp) to get the right specialization of Concurrent_Stack and to achieve the default arguments consistently.
 
-### 2.3.8. TODO <a id='sec238'></a>
+### 2.5.8. TODO <a id='sec2058'></a>
 Consider exponential backoff for the head node in order to deal with the high CAS contention on the head.
+
+## 2.6. Thread_Pool__Blocking <a id='sec206'></a>
+TODO
+
+### 2.6.1. Description <a id='sec2061'></a>
+TODO
+
+### 2.6.2. Requirements <a id='sec2062'></a>
+TODO
+
+### 2.6.3. Invariants <a id='sec2063'></a>
+TODO
+
+### 2.6.4. Semantics <a id='sec2064'></a>
+TODO
+
+### 2.6.5. Progress <a id='sec2065'></a>
+TODO
+
+### 2.6.6. Notes <a id='sec2066'></a>
+TODO
+
+### 2.6.7. Cautions <a id='sec2067'></a>
+TODO
+
+### 2.6.8. TODO <a id='sec2068'></a>
+TODO
+
+## 2.7. Thread_Pool__Deadline <a id='sec207'></a>
+TODO
+
+### 2.7.1. Description <a id='sec2071'></a>
+TODO
+
+### 2.7.2. Requirements <a id='sec2072'></a>
+TODO
+
+### 2.7.3. Invariants <a id='sec2073'></a>
+TODO
+
+### 2.7.4. Semantics <a id='sec2074'></a>
+TODO
+
+### 2.7.5. Progress <a id='sec2075'></a>
+TODO
+
+### 2.7.6. Notes <a id='sec2076'></a>
+TODO
+
+### 2.7.7. Cautions <a id='sec2077'></a>
+TODO
+
+### 2.7.8. TODO <a id='sec2078'></a>
+TODO
+
+## 2.8. Thread_Pool__Work_Stealing <a id='sec208'></a>
+TODO
+
+### 2.8.1. Description <a id='sec2081'></a>
+TODO
+
+### 2.8.2. Requirements <a id='sec2082'></a>
+TODO
+
+### 2.8.3. Invariants <a id='sec2083'></a>
+TODO
+
+### 2.8.4. Semantics <a id='sec2084'></a>
+TODO
+
+### 2.8.5. Progress <a id='sec2085'></a>
+TODO
+
+### 2.8.6. Notes <a id='sec2086'></a>
+TODO
+
+### 2.8.7. Cautions <a id='sec2087'></a>
+TODO
+
+### 2.8.8. TODO <a id='sec2088'></a>
+TODO
+
+## 2.9. Thread_Pool__LF <a id='sec209'></a>
+TODO
+
+### 2.9.1. Description <a id='sec2091'></a>
+TODO
+
+### 2.9.2. Requirements <a id='sec2092'></a>
+TODO
+
+### 2.9.3. Invariants <a id='sec2093'></a>
+TODO
+
+### 2.9.4. Semantics <a id='sec2094'></a>
+TODO
+
+### 2.9.5. Progress <a id='sec2095'></a>
+TODO
+
+### 2.9.6. Notes <a id='sec2096'></a>
+TODO
+
+### 2.9.7. Cautions <a id='sec2097'></a>
+TODO
+
+### 2.9.8. TODO <a id='sec2098'></a>
+TODO
+
+## 2.10. Thread_Pool__NUMA_Aware <a id='sec210'></a>
+TODO
+
+### 2.10.1. Description <a id='sec2101'></a>
+TODO
+
+### 2.10.2. Requirements <a id='sec2102'></a>
+TODO
+
+### 2.10.3. Invariants <a id='sec2103'></a>
+TODO
+
+### 2.10.4. Semantics <a id='sec2104'></a>
+TODO
+
+### 2.10.5. Progress <a id='sec2105'></a>
+TODO
+
+### 2.10.6. Notes <a id='sec2106'></a>
+TODO
+
+### 2.10.7. Cautions <a id='sec2107'></a>
+TODO
+
+### 2.10.8. TODO <a id='sec2108'></a>
+TODO
+
+## 2.11. Thread_Pool__Actor <a id='sec211'></a>
+TODO
+
+### 2.11.1. Description <a id='sec2111'></a>
+TODO
+
+### 2.11.2. Requirements <a id='sec2112'></a>
+TODO
+
+### 2.11.3. Invariants <a id='sec2113'></a>
+TODO
+
+### 2.11.4. Semantics <a id='sec2114'></a>
+TODO
+
+### 2.11.5. Progress <a id='sec2115'></a>
+TODO
+
+### 2.11.6. Notes <a id='sec2116'></a>
+TODO
+
+### 2.11.7. Cautions <a id='sec2117'></a>
+TODO
+
+### 2.11.8. TODO <a id='sec2118'></a>
+TODO
