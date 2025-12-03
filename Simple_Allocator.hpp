@@ -11,7 +11,7 @@ namespace BA_Concurrency {
         size_t N,
         size_t Alignment,
         typename Arena = Simple_Static_Arena<N, Alignment>>
-    struct Simple_Allocator {
+    class Simple_Allocator {
     public:
         using value_type = T;
         using arena_type = Arena;
@@ -41,7 +41,7 @@ namespace BA_Concurrency {
         auto operator!=(const Simple_Allocator<U, M, Alignment, arena_type>& other) const noexcept {
             return !(*this == other);
         }
-        template <class U, size_t M, typename Alignment2, typename Arena_Type2> friend struct Simple_Allocator;
+        template <class U, size_t M, typename Alignment2, typename Arena_Type2> friend class Simple_Allocator;
     private:
         arena_type* _arena;
     };
