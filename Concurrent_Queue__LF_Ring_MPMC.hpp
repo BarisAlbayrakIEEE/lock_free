@@ -165,7 +165,7 @@
 //   The thread coming first shall write/read first.
 //   However, here in this design, the two pointers always advance.
 //   Hence, the FIFO order is preserved ONLY LOGICALLY BUT NOT TEMPORARILY.
-//   A producer thread (PT1) arriving earlier may be blocked and write later
+//   A producer thread (PT1) arriving earlier may be blocked (or work longer) and write later
 //   than another producer (PT2) arriving later.
 //   Correspondingly, the data of PT2 may be read before that of PT1.
 //   This is SAME AS moodycamel::ConcurrentQueue
@@ -195,7 +195,7 @@
 //      to get the right specialization of Concurrent_Queue
 //      and to achieve the default arguments consistently.
 //   3. As stated in the Progress section, 
-//      this version does not preserve the FIFO order.
+//      this version preserves the FIFO order logically but not temporarily.
 //
 // TODOs:
 //   1. The blocking operations (push and pop) back-pressures
