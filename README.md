@@ -119,8 +119,8 @@ I will use the ring buffer for the queue as it is very efficient for the FIFO or
 
 In this repository, I will cover simple designs for the following configurations:
 - A very simple link-based lock-based blocking queue,
-- A ring buffer MPMC lock-free queue with ticket-based synchronization satisfying only the **logical FIFO**,
-- A ring buffer MPSC lock-free queue with ticket-based synchronization satisfying only the **logical FIFO**,
+- A ring buffer MPMC lock-free queue with ticket-based synchronization satisfying the **logical FIFO**,
+- A ring buffer MPSC lock-free queue with ticket-based synchronization satisfying the **logical FIFO**,
 - A link-based MPSC lock-free stack with a user defined allocator,
 - A link-based MPMC lock-free stack with a user defined allocator and hazard pointers for the memory reclamation,
 - A link-based MPMC lock-free stack with a user defined allocator and read-copy-update (RCU) reclamation for the memory,
@@ -171,7 +171,7 @@ TODO
 TODO
 
 ## 2.2. Concurrent_Queue__LF_Ring_MPMC <a id='sec202'></a>
-This is a ring buffer lock-free queue with ticket-based synchronization satisfying only the **logical FIFO**.
+This is a ring buffer lock-free queue with ticket-based synchronization satisfying the **logical FIFO**.
 The design is similar with the following libraries:
 - boost::lock_free::queue
 - moodycamel::ConcurrentQueue
@@ -302,7 +302,7 @@ As explained above, the producers are all blocked until the slot is ready for pu
 This blocking algorithm is choosen to satisfy **the stcict temporal FIFO**.
 The producers push one-by-one and the consumers pop one-by-one.
 
-On the other hand, in my design, the FIFO invariant is relaxed to provide the FIFO order **only logically** such that the producers and consumers walk through an ordered buffer of slots.
+On the other hand, in my design, the FIFO invariant is relaxed to provide the FIFO order **logically** such that the producers and consumers walk through an ordered buffer of slots.
 As the temporal FIFO is excluded, the head and tail pointers can be advanced freely.
 Hence, the CAS operation used by the queue of liblfds can safely be replaced by a fetch_add operation:
 
